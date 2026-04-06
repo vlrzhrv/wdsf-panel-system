@@ -1,0 +1,2690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WDSF Panel Assignment System</title>
+<style>
+  :root {
+    --primary: #4f46e5;
+    --primary-dark: #3730a3;
+    --primary-light: #e0e7ff;
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-500: #6b7280;
+    --gray-700: #374151;
+    --gray-900: #111827;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: var(--gray-700); }
+
+  /* NAV */
+  nav { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 0 2rem; display:flex; align-items:center; gap:0.5rem; box-shadow: 0 2px 8px rgba(79,70,229,0.4); }
+  .nav-brand { color:white; font-size:1.1rem; font-weight:700; padding: 1rem 0; margin-right:1.5rem; display:flex; align-items:center; gap:0.5rem; }
+  .nav-brand span { font-size:1.4rem; }
+  .nav-btn { background:none; border:none; color:rgba(255,255,255,0.75); padding:1rem 1rem; cursor:pointer; font-size:0.875rem; font-weight:500; border-bottom: 3px solid transparent; transition:all 0.2s; }
+  .nav-btn:hover { color:white; }
+  .nav-btn.active { color:white; border-bottom-color: rgba(255,255,255,0.8); }
+
+  /* PAGES */
+  .page { display:none; padding:2rem; max-width:1400px; margin:0 auto; }
+  .page.active { display:block; }
+
+  /* CARDS */
+  .card { background:white; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); padding:1.5rem; }
+  .card-title { font-size:1rem; font-weight:600; color:var(--gray-700); margin-bottom:1rem; display:flex; align-items:center; gap:0.5rem; }
+
+  /* STAT CARDS */
+  .stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+  .stat-card { background:white; border-radius:12px; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,0.08); display:flex; align-items:center; gap:1rem; }
+  .stat-icon { width:52px; height:52px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; flex-shrink:0; }
+  .stat-icon.purple { background: #ede9fe; }
+  .stat-icon.green { background: #d1fae5; }
+  .stat-icon.blue { background: #dbeafe; }
+  .stat-icon.orange { background: #ffedd5; }
+  .stat-value { font-size:1.8rem; font-weight:700; color:var(--gray-900); line-height:1; }
+  .stat-label { font-size:0.8rem; color:var(--gray-500); margin-top:0.2rem; }
+
+  /* TABLE */
+  .table-wrap { overflow-x:auto; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:0.875rem; }
+  th { background: var(--gray-50); padding:0.75rem 1rem; text-align:left; font-weight:600; color:var(--gray-500); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1px solid var(--gray-200); }
+  td { padding:0.75rem 1rem; border-bottom:1px solid var(--gray-100); }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background: var(--gray-50); }
+
+  /* BADGES */
+  .badge { display:inline-flex; align-items:center; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.7rem; font-weight:600; }
+  .badge-A { background:#d1fae5; color:#065f46; }
+  .badge-B { background:#dbeafe; color:#1e40af; }
+  .badge-C { background:#fce7f3; color:#9d174d; }
+  .badge-null { background:#f3f4f6; color:#6b7280; }
+  .badge-active { background:#d1fae5; color:#065f46; }
+  .badge-inactive { background:#fee2e2; color:#991b1b; }
+  .zone-badge { display:inline-flex; align-items:center; padding:0.2rem 0.6rem; border-radius:999px; font-size:0.7rem; font-weight:600; }
+  .zone-Central  { background:#fef9c3; color:#713f12; }
+  .zone-East     { background:#fee2e2; color:#7f1d1d; }
+  .zone-West     { background:#d1fae5; color:#065f46; }
+  .zone-North    { background:#dbeafe; color:#1e3a8a; }
+  .zone-South    { background:#ffedd5; color:#7c2d12; }
+  .zone-E\.Asia  { background:#e0e7ff; color:#3730a3; }
+  .zone-SE\.Asia { background:#f3e8ff; color:#4a1d96; }
+  .zone-Oceania  { background:#cffafe; color:#164e63; }
+  .zone-Americas { background:#ccfbf1; color:#134e4a; }
+  .zone-Africa   { background:#fef3c7; color:#78350f; }
+  .zone-Other    { background:#f3f4f6; color:#6b7280; }
+
+  /* BUTTONS */
+  .btn { display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 1rem; border-radius:8px; border:none; font-size:0.875rem; font-weight:500; cursor:pointer; transition:all 0.15s; }
+  .btn-primary { background:var(--primary); color:white; }
+  .btn-primary:hover { background:var(--primary-dark); }
+  .btn-success { background:#059669; color:white; }
+  .btn-success:hover { background:#047857; }
+  .btn-danger { background:#dc2626; color:white; }
+  .btn-danger:hover { background:#b91c1c; }
+  .btn-outline { background:white; color:var(--primary); border:1px solid var(--gray-200); }
+  .btn-outline:hover { background:var(--primary-light); border-color:var(--primary); }
+  .btn-sm { padding:0.3rem 0.7rem; font-size:0.8rem; }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+  /* FILTERS */
+  .filters { display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; }
+  input[type=text], input[type=date], input[type=number], select {
+    padding:0.5rem 0.75rem; border:1px solid var(--gray-200); border-radius:8px;
+    font-size:0.875rem; outline:none; transition:border-color 0.15s; background:white;
+  }
+  input:focus, select:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,0.1); }
+  input[type=text] { min-width:220px; }
+
+  /* MODAL */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:100; display:none; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+  .modal-overlay.open { display:flex; }
+  .modal { background:white; border-radius:16px; padding:2rem; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; }
+  .modal-title { font-size:1.1rem; font-weight:700; color:var(--gray-900); margin-bottom:1.5rem; }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .form-group { display:flex; flex-direction:column; gap:0.35rem; }
+  .form-group.full { grid-column:1/-1; }
+  .form-group label { font-size:0.8rem; font-weight:600; color:var(--gray-700); }
+  .form-group input, .form-group select { width:100%; }
+  .modal-actions { display:flex; gap:0.75rem; justify-content:flex-end; margin-top:1.5rem; }
+
+  /* PANEL RESULT */
+  .panel-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap:1rem; margin-top:1rem; }
+  .judge-card { background:white; border-radius:12px; padding:1.2rem; border:2px solid var(--gray-200); transition:all 0.2s; }
+  .judge-card.host { border-color:#f59e0b; background:#fffbeb; }
+  .judge-card.top3 { border-color:#10b981; background:#f0fdf4; }
+  .judge-card.reserve { opacity:0.75; border-style:dashed; }
+  .judge-pos { font-size:0.7rem; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:0.05em; }
+  .judge-name { font-size:1rem; font-weight:700; color:var(--gray-900); margin:0.3rem 0; }
+  .judge-country { font-size:0.875rem; color:var(--gray-500); }
+  .judge-score { display:flex; align-items:center; justify-content:space-between; margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--gray-100); }
+  .score-val { font-size:1.3rem; font-weight:700; color:var(--primary); }
+  .score-bar-wrap { flex:1; margin-left:0.75rem; }
+  .score-bar { height:6px; background:var(--gray-200); border-radius:3px; overflow:hidden; }
+  .score-fill { height:100%; border-radius:3px; background: linear-gradient(90deg, #4f46e5, #7c3aed); transition:width 0.5s; }
+  .judge-exp { font-size:0.75rem; color:var(--gray-500); margin-top:0.4rem; }
+  .role-badge { display:inline-flex; align-items:center; gap:0.25rem; padding:0.15rem 0.5rem; border-radius:999px; font-size:0.65rem; font-weight:700; text-transform:uppercase; }
+  .role-host { background:#fef3c7; color:#92400e; }
+  .role-top3 { background:#d1fae5; color:#065f46; }
+  .role-selected { background:#dbeafe; color:#1e40af; }
+  .role-reserve { background:#f3f4f6; color:#6b7280; }
+  .specialty-badge { display:inline-flex; align-items:center; gap:0.2rem; padding:0.1rem 0.45rem;
+    border-radius:999px; font-size:0.62rem; font-weight:700; margin-left:0.3rem; }
+  .spec-Standard { background:#dbeafe; color:#1e3a8a; }
+  .spec-Latin    { background:#fce7f3; color:#9d174d; }
+  .spec-Both     { background:#ecfdf5; color:#065f46; }
+  .spec-10-Dance { background:#fef3c7; color:#92400e; }
+  .spec-Unknown  { background:#f3f4f6; color:#9ca3af; }
+
+  /* SWAP BUTTON & MODAL */
+  .btn-swap { margin-top:0.75rem; width:100%; padding:0.35rem 0.5rem; border:1.5px solid #c7d2fe;
+    border-radius:8px; background:#f5f3ff; color:#4f46e5; font-size:0.75rem; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.35rem;
+    transition:background 0.15s,border-color 0.15s; }
+  .btn-swap:hover { background:#ede9fe; border-color:#818cf8; }
+  .swap-modal { max-width:640px; }
+  .swap-current { background:#f8fafc; border-radius:10px; padding:0.9rem 1rem; margin-bottom:1.2rem;
+    border:1.5px solid #e2e8f0; font-size:0.875rem; }
+  .swap-current strong { font-size:1rem; color:#1e293b; }
+  .alt-list { display:flex; flex-direction:column; gap:0.5rem; max-height:420px; overflow-y:auto; }
+  .alt-item { display:flex; align-items:center; gap:0.75rem; padding:0.7rem 0.9rem;
+    border-radius:10px; border:2px solid var(--gray-200); cursor:pointer;
+    transition:border-color 0.15s,background 0.15s; background:white; }
+  .alt-item:hover { border-color:#818cf8; background:#f5f3ff; }
+  .alt-item.selected { border-color:#4f46e5; background:#ede9fe; }
+  .alt-rank { font-size:0.7rem; font-weight:700; color:var(--gray-400); width:1.4rem; text-align:center; }
+  .alt-info { flex:1; }
+  .alt-name { font-weight:700; font-size:0.9rem; color:#1e293b; }
+  .alt-meta { font-size:0.75rem; color:var(--gray-500); margin-top:0.1rem; }
+  .alt-score { text-align:right; }
+  .alt-score-val { font-size:1.1rem; font-weight:700; color:var(--primary); }
+  .alt-score-lbl { font-size:0.6rem; color:var(--gray-400); }
+  .alt-loading { text-align:center; padding:2rem; color:var(--gray-500); font-size:0.9rem; }
+
+  /* ZONES DISPLAY */
+  .zones-row { display:flex; flex-wrap:wrap; gap:0.5rem; margin:1rem 0; }
+
+  /* LOADING */
+  .spinner { display:inline-block; width:20px; height:20px; border:2px solid rgba(255,255,255,0.3); border-top-color:white; border-radius:50%; animation:spin 0.6s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ALERT */
+  .alert { padding:1rem 1.25rem; border-radius:8px; font-size:0.875rem; margin-bottom:1rem; }
+  .alert-info { background:#dbeafe; color:#1e40af; border-left:4px solid #3b82f6; }
+  .alert-success { background:#d1fae5; color:#065f46; border-left:4px solid #10b981; }
+  .alert-warning { background:#fef3c7; color:#92400e; border-left:4px solid #f59e0b; }
+  .alert-error { background:#fee2e2; color:#991b1b; border-left:4px solid #ef4444; }
+
+  /* PAIR DETAIL MODAL — uses .pair-modal-overlay, no conflict with existing .modal-overlay */
+  .pair-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; display:flex; align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto; }
+  .modal-box { background:#fff; border-radius:12px; width:100%; max-width:860px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+  .modal-header { display:flex; align-items:center; justify-content:space-between; padding:1.25rem 1.5rem; border-bottom:1px solid #e5e7eb; }
+  .modal-header h2 { font-size:1.1rem; font-weight:700; margin:0; }
+  .modal-close { background:none; border:none; font-size:1.5rem; cursor:pointer; color:#6b7280; line-height:1; }
+  .modal-close:hover { color:#111; }
+  .modal-body { padding:1.5rem; }
+  .comp-block { border:1px solid #e5e7eb; border-radius:8px; margin-bottom:1rem; overflow:hidden; }
+  .comp-block-header { display:flex; align-items:center; gap:1rem; padding:0.75rem 1rem; background:#f9fafb; border-bottom:1px solid #e5e7eb; font-size:0.85rem; flex-wrap:wrap; }
+  .comp-block-header strong { font-size:0.9rem; }
+  .couples-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:0.4rem; padding:0.75rem 1rem; }
+  .couple-cell { border-radius:6px; padding:0.35rem 0.4rem; font-size:0.75rem; text-align:center; border:1px solid #e5e7eb; }
+  .couple-cell.agree { background:#d1fae5; border-color:#6ee7b7; }
+  .couple-cell.disagree { background:#fee2e2; border-color:#fca5a5; }
+  .couple-cell .couple-num { font-weight:700; color:#374151; }
+  .couple-cell .marks { color:#6b7280; font-size:0.7rem; }
+
+  /* DISCIPLINE BADGES */
+  .disc-badge { display:inline-flex; align-items:center; padding:0.15rem 0.55rem;
+    border-radius:999px; font-size:0.7rem; font-weight:700; }
+  .disc-Standard  { background:#dbeafe; color:#1e3a8a; }
+  .disc-Latin     { background:#fce7f3; color:#9d174d; }
+  .disc-Combined  { background:#d1fae5; color:#065f46; }
+  .disc-TenDance  { background:#d1fae5; color:#065f46; }
+  .disc-primary   { cursor:pointer; border:1.5px solid currentColor; font-size:0.72rem; }
+  .disc-primary:hover { opacity:0.8; }
+
+  /* CAREER BADGES */
+  .career-wc       { background:#fef9c3; color:#78350f; border:1px solid #fde68a; }
+  .career-podium   { background:#dbeafe; color:#1e3a8a; border:1px solid #bfdbfe; }
+  .career-pro      { background:#ede9fe; color:#4c1d95; border:1px solid #ddd6fe; }
+  .career-youth    { background:#dcfce7; color:#14532d; border:1px solid #bbf7d0; }
+  .career-finalist { background:#fed7aa; color:#7c2d12; }
+  .career-intl     { background:#e0f2fe; color:#075985; }
+  .career-national { background:#f3f4f6; color:#9ca3af; }
+
+  /* STATUS BADGES — extended */
+  .badge-pending         { background:#f3f4f6; color:#6b7280; }
+  .badge-nominated       { background:#dbeafe; color:#1e40af; }
+  .badge-assigned        { background:#d1fae5; color:#065f46; }
+  .badge-confirmed       { background:#fef9c3; color:#78350f; }
+  .badge-sent_for_review { background:#fce7f3; color:#9d174d; }
+
+  /* INVITED JUDGE BADGE */
+  .badge-invited { background:#dbeafe; color:#1e40af; font-size:0.65rem; font-weight:700;
+    padding:0.15rem 0.45rem; border-radius:999px; vertical-align:middle; }
+  .invited-tag { display:inline-flex; align-items:center; gap:0.3rem; background:#eff6ff;
+    border:1px solid #93c5fd; border-radius:999px; padding:0.25rem 0.6rem;
+    font-size:0.75rem; color:#1e40af; font-weight:600; }
+  .invited-tag button { background:none; border:none; cursor:pointer; color:#3b82f6;
+    font-size:0.9rem; line-height:1; padding:0; }
+  .invited-item { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.75rem;
+    cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.82rem; }
+  .invited-item:hover { background:#f0f9ff; }
+  .invited-item.selected { background:#eff6ff; }
+  .invited-item.selected::after { content:'✓'; color:#2563eb; font-weight:700; margin-left:auto; }
+
+  /* CONFIRM ACTION BAR */
+  .confirm-bar { display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+    background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius:12px;
+    padding:1rem 1.5rem; margin-bottom:1.5rem; }
+  .confirm-bar.is-confirmed { background:#fefce8; border-color:#fde68a; }
+  .confirm-bar.is-sent      { background:#fdf2f8; border-color:#fbcfe8; }
+  .confirm-event-info { flex:1; }
+  .confirm-event-name { font-weight:700; font-size:1rem; color:#1e293b; }
+  .confirm-event-status { font-size:0.8rem; margin-top:0.2rem; }
+
+  /* COMMITTED indicator on judge cards */
+  .judge-card.committed { border-color:#fbbf24; background:#fefce8; }
+
+  /* MISC */
+  .page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; }
+  .page-title { font-size:1.5rem; font-weight:700; color:var(--gray-900); }
+  .text-muted { color:var(--gray-500); font-size:0.875rem; }
+  .mt-1 { margin-top:0.5rem; }
+  .gap-2 { display:flex; gap:0.5rem; align-items:center; }
+  #toast { position:fixed; bottom:1.5rem; right:1.5rem; z-index:999; display:flex; flex-direction:column; gap:0.5rem; }
+  .toast-msg { background:#1e293b; color:white; padding:0.75rem 1.25rem; border-radius:10px; font-size:0.875rem; box-shadow:0 4px 12px rgba(0,0,0,0.2); animation:slideUp 0.3s ease; }
+  .toast-msg.success { border-left:4px solid #10b981; }
+  .toast-msg.error   { border-left:4px solid #ef4444; }
+  @keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+  .empty-state { text-align:center; padding:3rem; color:var(--gray-500); }
+  .empty-state .icon { font-size:3rem; margin-bottom:0.75rem; }
+  .score-details[open] .details-arrow { display:inline-block; transform:rotate(90deg); }
+  .score-details summary::-webkit-details-marker { display:none; }
+  .score-details .details-arrow { display:inline-block; transition:transform 0.2s; }
+  .wch-badge { display:inline-flex; align-items:center; gap:0.2rem; font-size:0.75rem; color:var(--gray-500); }
+  .divider { height:1px; background:var(--gray-100); margin:1rem 0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand"><span>💃</span> WDSF Panel System</div>
+  <button class="nav-btn active" onclick="showPage('dashboard')">📊 Dashboard</button>
+  <button class="nav-btn" onclick="showPage('judges')">👥 Judges</button>
+  <button class="nav-btn" onclick="showPage('events')">📅 Events</button>
+  <button class="nav-btn" onclick="showPage('assign')">🎯 Assignment</button>
+  <button class="nav-btn" onclick="showPage('nominations')">🌐 WDSF Nominees</button>
+  <button class="nav-btn" onclick="showPage('history'); loadCorrelations()">📈 Judge History</button>
+</nav>
+
+<div id="toast"></div>
+
+<!-- ═══════════════════ DASHBOARD ═══════════════════ -->
+<div id="page-dashboard" class="page active">
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="stat-icon purple">👥</div><div><div class="stat-value" id="s-total">—</div><div class="stat-label">Total Judges</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value" id="s-active">—</div><div class="stat-label">Active Judges</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">🏅</div><div><div class="stat-value" id="s-lica">—</div><div class="stat-label">License A</div></div></div>
+    <div class="stat-card"><div class="stat-icon orange">📅</div><div><div class="stat-value" id="s-events">—</div><div class="stat-label">Events</div></div></div>
+  </div>
+
+  <!-- Contadores de estado de paneles -->
+  <div class="stats-grid" id="panel-status-grid" style="margin-bottom:1.5rem;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <div class="stat-card" style="cursor:pointer" onclick="filterDashboard('pending')">
+      <div class="stat-icon" style="background:#f3f4f6;color:#6b7280">⏳</div>
+      <div><div class="stat-value" id="s-pending">—</div><div class="stat-label">No panel</div></div>
+    </div>
+    <div class="stat-card" style="cursor:pointer" onclick="filterDashboard('assigned')">
+      <div class="stat-icon" style="background:#d1fae5;color:#065f46">🎯</div>
+      <div><div class="stat-value" id="s-assigned">—</div><div class="stat-label">Assigned</div></div>
+    </div>
+    <div class="stat-card" style="cursor:pointer" onclick="filterDashboard('sent_for_review')">
+      <div class="stat-icon" style="background:#fce7f3;color:#9d174d">📤</div>
+      <div><div class="stat-value" id="s-review">—</div><div class="stat-label">Under Review</div></div>
+    </div>
+    <div class="stat-card" style="cursor:pointer" onclick="filterDashboard('confirmed')">
+      <div class="stat-icon" style="background:#fef9c3;color:#78350f">🔒</div>
+      <div><div class="stat-value" id="s-confirmed">—</div><div class="stat-label">Confirmed</div></div>
+    </div>
+    <div class="stat-card" style="cursor:pointer" onclick="filterDashboard('officially_nominated')">
+      <div class="stat-icon" style="background:#dbeafe;color:#1e40af">🌐</div>
+      <div><div class="stat-value" id="s-official">—</div><div class="stat-label">WDSF Nominated</div></div>
+    </div>
+    <div class="stat-card" style="cursor:pointer;border:2px solid transparent" id="s-filter-reset" onclick="filterDashboard(null)" style="display:none">
+      <div class="stat-icon" style="background:#e0e7ff;color:#3730a3">↺</div>
+      <div><div class="stat-value" style="font-size:1rem">View all</div><div class="stat-label">&nbsp;</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" id="dash-events-title">📅 All Events</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Date</th><th>Country</th><th>Discipline</th><th>Type</th><th>Status</th><th></th></tr></thead>
+        <tbody id="dash-events-body"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ JUECES ═══════════════════ -->
+<div id="page-judges" class="page">
+  <div class="page-header">
+    <div class="page-title">👥 Judges <span id="judges-count" style="font-size:1rem;color:var(--gray-500);font-weight:400"></span></div>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="filters">
+      <input type="text" id="j-search" placeholder="🔍 Search by name, country..." oninput="loadJudges()">
+      <select id="j-license" onchange="loadJudges()">
+        <option value="">All licenses</option>
+        <option value="A">License A</option>
+        <option value="B">License B</option>
+        <option value="C">License C</option>
+      </select>
+      <select id="j-discipline" onchange="loadJudges()">
+        <option value="">All disciplines</option>
+        <option value="Standard">Standard</option>
+        <option value="Latin">Latin</option>
+        <option value="Combined">Combined</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.875rem;cursor:pointer;">
+        <input type="checkbox" id="j-active" onchange="loadJudges()"> Active only
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Represents</th>
+            <th>Zone</th>
+            <th>Primary</th>
+            <th>Disciplines</th>
+            <th>Career</th>
+            <th>Lic.</th>
+            <th>WCH</th>
+            <th>GS</th>
+            <th>CCH</th>
+            <th>Status</th>
+            <th>Edit</th>
+          </tr>
+        </thead>
+        <tbody id="judges-body">
+          <tr><td colspan="12" class="empty-state">Loading judges...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ EVENTOS ═══════════════════ -->
+<div id="page-events" class="page">
+  <div class="page-header">
+    <div class="page-title">📅 Events</div>
+    <button class="btn btn-primary" onclick="openEventModal()">➕ New Event</button>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Name</th><th>Date</th><th>Country</th><th>Discipline</th><th>Type</th><th>AGS</th><th>Coef.</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="events-body">
+          <tr><td colspan="10" class="empty-state">Loading events...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ASIGNACIÓN ═══════════════════ -->
+<div id="page-assign" class="page">
+  <div class="page-header">
+    <div class="page-title">🎯 Panel Assignment</div>
+  </div>
+
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div class="card-title">⚙️ Configure Assignment</div>
+    <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+      <div class="form-group">
+        <label>Select Event</label>
+        <select id="assign-event" style="min-width:380px;" onchange="onEventSelected()">
+          <option value="">— Select an event —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Number of judges</label>
+        <input type="number" id="panel-size-input" min="3" max="20" value="9"
+               style="width:80px;padding:0.5rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:1rem;">
+      </div>
+      <div id="assign-actions" style="display:flex;gap:0.75rem;align-items:center;">
+        <button class="btn btn-outline" onclick="loadExistingPanel()" id="view-panel-btn" style="display:none;">
+          👁 View Current Panel
+        </button>
+        <button class="btn btn-success" onclick="runAssignment()" id="assign-btn">
+          ▶ Run Assignment
+        </button>
+      </div>
+    </div>
+    <div id="event-status-hint" style="margin-top:0.75rem;display:none;"></div>
+
+    <!-- ✈️ Invited Judges (optional, collapsible) -->
+    <div id="invited-section" style="display:none; margin-top:1.25rem; border-top:1px solid #e5e7eb; padding-top:1rem;">
+      <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; cursor:pointer;" onclick="toggleInvited()">
+        <span style="font-weight:600; font-size:0.9rem;">✈️ Organiser's Invited Judges</span>
+        <span id="invited-toggle-icon" style="color:#6b7280; font-size:0.8rem;">▼ show</span>
+      </div>
+      <div id="invited-body" style="display:none;">
+        <p style="font-size:0.82rem; color:#6b7280; margin:0 0 0.75rem;">
+          If the organiser has already invited judges, add them here. The system will include them in the panel
+          if they meet all requirements (active licence A, right discipline, country not already represented).
+          This can save the organiser travel costs.
+        </p>
+        <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+          <input id="invited-search" type="text" placeholder="Search judge by name…"
+                 style="flex:1;padding:0.45rem 0.75rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:0.875rem;"
+                 oninput="filterInvitedList()">
+        </div>
+        <div id="invited-list" style="border:1px solid #e5e7eb; border-radius:0.5rem; max-height:200px; overflow-y:auto; background:#fafafa;">
+          <div style="padding:1rem; color:#9ca3af; text-align:center; font-size:0.875rem;">Select an event first to load judges.</div>
+        </div>
+        <div id="invited-tags" style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.75rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="assign-result" style="display:none;">
+
+    <!-- Barra de confirmación -->
+    <div id="confirm-bar" class="confirm-bar" style="display:none;">
+      <div class="confirm-event-info">
+        <div class="confirm-event-name" id="confirm-event-name">—</div>
+        <div class="confirm-event-status" id="confirm-event-status-line"></div>
+      </div>
+      <button class="btn btn-success" id="btn-confirm-panel" onclick="confirmPanel()">
+        ✓ Confirm Panel
+      </button>
+      <button class="btn btn-outline" id="btn-send-review" onclick="sendForReview()" style="border-color:#e879f9;color:#9333ea;">
+        📤 Send for Review
+      </button>
+      <button class="btn btn-outline" id="btn-reopen-panel" onclick="reopenPanel()" style="border-color:#f97316;color:#c2410c;display:none;">
+        🔓 Reopen Panel
+      </button>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-title">📊 Result</div>
+      <div id="assign-summary"></div>
+      <div class="divider"></div>
+      <div class="card-title">🌍 Geographic Zones Covered</div>
+      <div id="assign-zones" class="zones-row"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.5rem;">
+      <div class="card-title">👨‍⚖️ Judges Panel</div>
+      <div id="panel-grid" class="panel-grid"></div>
+    </div>
+
+    <div id="panel-corr-warnings" style="margin-bottom:1.5rem;display:none;"></div>
+
+    <div class="card" id="panel-logic-card" style="margin-bottom:1.5rem;display:none;">
+      <div class="card-title">🧠 Selection Logic</div>
+      <div id="panel-logic-content"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ NOMINADOS WDSF ═══════════════════ -->
+<div id="page-nominations" class="page">
+  <div class="page-header">
+    <div class="page-title">🌐 WDSF Official Nominees</div>
+    <div style="display:flex;gap:0.75rem;align-items:center">
+      <span id="nom-last-sync" class="text-muted" style="font-size:0.8rem"></span>
+      <button class="btn btn-primary" id="btn-sync-nom" onclick="runSync()">
+        🔄 Sync now
+      </button>
+      <a href="https://www.worlddancesport.org/NominatedOfficials" target="_blank"
+         class="btn btn-outline">🔗 Ver en WDSF</a>
+    </div>
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom:1.5rem">
+    This page shows panels already published on the official WDSF website.
+    Judges listed as <strong>confirmed adjudicators</strong> are automatically excluded
+    from new assignments.
+  </div>
+
+  <div id="nom-loading" class="card" style="text-align:center;padding:3rem;display:none">
+    <div style="font-size:2rem">⏳</div>
+    <div style="margin-top:0.5rem;color:var(--gray-500)">Syncing with WDSF… this may take 1-2 minutes</div>
+    <div id="nom-sync-log" style="margin-top:1rem;font-size:0.75rem;color:#6b7280;text-align:left;
+      background:#f9fafb;padding:1rem;border-radius:8px;max-height:200px;overflow-y:auto;white-space:pre"></div>
+  </div>
+
+  <div id="nom-list"></div>
+</div>
+
+<!-- ═══════════════════ JUDGE HISTORY ═══════════════════ -->
+<div id="page-history" class="page">
+  <div class="page-header">
+    <div class="page-title">📈 Historical Judge Analysis</div>
+    <div style="display:flex;gap:0.75rem;align-items:center">
+      <button class="btn btn-outline" onclick="loadCorrelations()">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom:1.5rem">
+    <strong>How it works:</strong> Paste a WDSF competition slug (e.g.
+    <code>GrandSlam-Blackpool-Adult-Standard-65351</code>) to scrape its official marks.
+    After scraping several competitions, compute the <strong>Spearman correlation</strong>
+    between all judge pairs. Judges who vote similarly get a lower independence score —
+    this is used as <strong>Criterion F</strong> when building panels.
+    The goal: select judges with diverse perspectives.
+  </div>
+
+  <!-- Scrape form -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">⬇️ Scrape a Competition</div>
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+      <input id="hist-slug" type="text" class="form-input" style="flex:1;min-width:280px"
+        placeholder="e.g. GrandSlam-Blackpool-Adult-Standard-65351"
+        onkeydown="if(event.key==='Enter') scrapeCompetition()">
+      <button class="btn btn-primary" onclick="scrapeCompetition()" id="btn-scrape">
+        📥 Scrape Marks
+      </button>
+    </div>
+    <div style="margin-top:0.5rem;font-size:0.78rem;color:var(--gray-500)">
+      Find the slug in the WDSF URL:
+      worlddancesport.org/Competitions/Results/<strong>slug-here</strong>
+    </div>
+    <div id="hist-scrape-result" style="margin-top:0.75rem"></div>
+  </div>
+
+  <!-- Rescrape All + Compute button -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">⚡ Bulk Actions</div>
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="computeCorrelations()" id="btn-compute">
+        🔬 Compute / Update Correlations
+      </button>
+      <button class="btn btn-secondary" onclick="rescrapeAll()" id="btn-rescrape-all"
+              title="Re-fetch all competitions with the latest parsing code (picks up finals from World Open competitions)">
+        🔄 Re-scrape All Competitions
+      </button>
+      <span id="hist-compute-result" style="font-size:0.85rem;color:var(--gray-500)"></span>
+    </div>
+    <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--gray-500)">
+      Run after scraping new competitions to update Criterion F scores. Use "Re-scrape All" after a server update to refresh final-round data.
+    </div>
+    <div id="rescrape-all-result" style="margin-top:0.75rem"></div>
+  </div>
+
+  <!-- Panel Diversity Analyzer -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">🎯 Panel Diversity Analyzer</div>
+    <div style="font-size:0.82rem;color:var(--gray-500);margin-bottom:1rem">
+      Enter the judges for a proposed panel to compute how diverse they are based on past judging patterns.
+    </div>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+      <div style="flex:1;min-width:280px">
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">Discipline</label>
+        <select id="div-discipline" style="width:100%;padding:0.5rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
+          <option value="Standard">Standard</option>
+          <option value="Latin">Latin</option>
+        </select>
+      </div>
+      <div style="flex:2;min-width:320px">
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">Add judge</label>
+        <div style="display:flex;gap:0.5rem">
+          <input id="div-judge-input" type="text" placeholder="Type judge name and press Enter or Add…"
+            style="flex:1;padding:0.5rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem"
+            list="div-judge-suggestions" onkeydown="if(event.key==='Enter')addDiversityJudge()">
+          <datalist id="div-judge-suggestions"></datalist>
+          <button class="btn btn-secondary" onclick="addDiversityJudge()" style="white-space:nowrap">+ Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Judge tags -->
+    <div id="div-judge-tags" style="display:flex;flex-wrap:wrap;gap:0.4rem;min-height:2rem;margin-bottom:1rem;padding:0.5rem;background:var(--gray-50);border-radius:6px;border:1px dashed var(--gray-200)">
+      <span style="color:var(--gray-400);font-size:0.82rem;align-self:center">No judges added yet</span>
+    </div>
+
+    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+      <button class="btn btn-primary" onclick="analyzePanelDiversity()" id="btn-diversity">🔍 Analyze Panel</button>
+      <button class="btn btn-secondary" onclick="clearDiversityPanel()">🗑 Clear</button>
+      <span id="div-judge-count" style="font-size:0.85rem;color:var(--gray-500)">0 judges</span>
+    </div>
+
+    <div id="div-result" style="display:none">
+      <!-- Score gauge -->
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:center">
+        <div id="div-score-box" style="text-align:center;padding:1.2rem 2rem;border-radius:12px;min-width:140px">
+          <div style="font-size:2.5rem;font-weight:700" id="div-score-num">—</div>
+          <div style="font-size:0.85rem;font-weight:600;margin-top:0.2rem" id="div-score-label">Diversity Score</div>
+          <div style="font-size:0.75rem;margin-top:0.2rem;opacity:0.8" id="div-score-rating"></div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:0.82rem;color:var(--gray-500);margin-bottom:0.5rem">
+            <strong>Scale:</strong> 0 = all judges identical · 50 = fully independent · 100 = maximum disagreement
+          </div>
+          <div id="div-avg-corr" style="font-size:0.9rem;margin-bottom:0.3rem"></div>
+          <div id="div-coverage" style="font-size:0.82rem;color:var(--gray-500)"></div>
+          <div id="div-worst" style="font-size:0.85rem;margin-top:0.5rem;color:#e53e3e"></div>
+          <div id="div-best" style="font-size:0.85rem;margin-top:0.2rem;color:#276749"></div>
+        </div>
+      </div>
+
+      <!-- Pair matrix -->
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">All judge pairs (sorted by similarity ↓)</div>
+      <div id="div-pair-table" class="table-wrap"></div>
+    </div>
+  </div>
+
+  <!-- Scraped competitions list -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">📋 Scraped Competitions (<span id="hist-n-comps">0</span>)</div>
+    <div id="hist-comps-list" class="table-wrap">
+      <div style="text-align:center;padding:2rem;color:var(--gray-500)">No competitions scraped yet</div>
+    </div>
+  </div>
+
+  <!-- Correlation heatmap / table -->
+  <div class="card">
+    <div class="card-title">🔗 Judge Pair Correlations (<span id="hist-n-pairs">0</span> pairs)
+      <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+        Spearman r: +1 = always vote the same, 0 = independent, −1 = always opposite
+      </span>
+    </div>
+
+    <!-- Legend -->
+    <div style="display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
+        <div style="width:14px;height:14px;background:#dc2626;border-radius:3px"></div>
+        <span>r &gt; 0.7 (very similar — avoid together)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
+        <div style="width:14px;height:14px;background:#d97706;border-radius:3px"></div>
+        <span>0.3 &lt; r ≤ 0.7 (somewhat similar)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.78rem">
+        <div style="width:14px;height:14px;background:#059669;border-radius:3px"></div>
+        <span>r ≤ 0.3 (independent)</span>
+      </div>
+    </div>
+
+    <!-- Filter -->
+    <div style="margin-bottom:0.75rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+      <input id="hist-filter" type="text" class="form-input" style="max-width:240px"
+        placeholder="Filter by judge name..." oninput="renderCorrelationTable()">
+      <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
+        <input type="checkbox" id="hist-only-high" onchange="renderCorrelationTable()">
+        Show only r &gt; 0.5
+      </label>
+    </div>
+
+    <div id="hist-corr-table" class="table-wrap">
+      <div style="text-align:center;padding:2rem;color:var(--gray-500)">
+        No correlation data yet — scrape some competitions and click Compute.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL EVENTO ═══════════════════ -->
+<div id="event-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">📅 New Event</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Event Name *</label>
+        <input type="text" id="ev-name" placeholder="WDSF World Championship Standard Adult">
+      </div>
+      <div class="form-group">
+        <label>Date *</label>
+        <input type="date" id="ev-date">
+      </div>
+      <div class="form-group">
+        <label>Host Country *</label>
+        <input type="text" id="ev-country" placeholder="Germany">
+      </div>
+      <div class="form-group">
+        <label>City / Location</label>
+        <input type="text" id="ev-location" placeholder="Berlin">
+      </div>
+      <div class="form-group">
+        <label>Discipline</label>
+        <select id="ev-discipline">
+          <option value="Standard">Standard</option>
+          <option value="Latin">Latin</option>
+          <option value="Ten Dance">Ten Dance</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Age Group</label>
+        <select id="ev-age">
+          <option value="Adult">Adult</option>
+          <option value="Youth">Youth</option>
+          <option value="Junior">Junior</option>
+          <option value="Senior I">Senior I</option>
+          <option value="Senior II">Senior II</option>
+          <option value="Senior III">Senior III</option>
+          <option value="Senior IV">Senior IV</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Division</label>
+        <select id="ev-division">
+          <option value="General">General</option>
+          <option value="Open">Open</option>
+          <option value="Amateur">Amateur</option>
+          <option value="Professional">Professional</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Event Type</label>
+        <select id="ev-type">
+          <option value="WORLD CHAMPIONSHIP">World Championship</option>
+          <option value="GRAND SLAM">Grand Slam</option>
+          <option value="EUROPEAN CHAMPIONSHIP">European Championship</option>
+          <option value="WORLD CUP">World Cup</option>
+          <option value="CONTINENTAL">Continental Championship</option>
+          <option value="OPEN">Open</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Coefficient (1.0–3.0)</label>
+        <input type="number" id="ev-coeff" value="2.0" step="0.5" min="1.0" max="3.0">
+      </div>
+      <div class="form-group" style="justify-content:flex-end; padding-top:1.5rem;">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+          <input type="checkbox" id="ev-ags"> AGS (12 judges in 4 groups)
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEventModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT JUDGE MODAL ───────────────────────────────────────────────── -->
+<div id="edit-judge-modal" class="modal-overlay">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">✎ Edit Judge</div>
+    <input type="hidden" id="ej-id">
+    <div style="font-weight:700;font-size:1rem;color:#1e293b;margin-bottom:1.25rem" id="ej-name"></div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Primary Discipline</label>
+        <select id="ej-primary">
+          <option value="">— Not assigned —</option>
+          <option value="Standard">Standard</option>
+          <option value="Latin">Latin</option>
+          <option value="Combined">Combined (Ten Dance)</option>
+        </select>
+        <span style="font-size:0.75rem;color:#6b7280;margin-top:0.25rem">
+          The discipline this judge specialises in or is most active in
+        </span>
+      </div>
+      <div class="form-group full">
+        <label>Dancing Career</label>
+        <select id="ej-career">
+          <option value="world_champion">🥇 World Champion</option>
+          <option value="world_podium">🥈 World Podium (2nd / 3rd)</option>
+          <option value="world_finalist">🎖 World Finalist (top 6)</option>
+          <option value="world_participant">🌍 World Championship Participant</option>
+          <option value="european_champion">🏆 European Champion</option>
+          <option value="european_podium">🥉 European Podium</option>
+          <option value="national" selected>National</option>
+        </select>
+      </div>
+      <div class="form-group full" style="justify-content:flex-start">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="ej-active"> Active license
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEditJudge()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditJudge()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SWAP MODAL ─────────────────────────────────────────────────────── -->
+<div id="swap-modal" class="modal-overlay">
+  <div class="modal swap-modal">
+    <div class="modal-title">⇄ Change Judge</div>
+    <div id="swap-current" class="swap-current"></div>
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;flex-wrap:wrap;">
+      <label style="font-size:0.8rem;font-weight:600;color:var(--gray-600);white-space:nowrap;">Search zone:</label>
+      <select id="swap-zone-select" onchange="changeSwapZone()"
+              style="padding:0.3rem 0.6rem;border:1px solid #d1d5db;border-radius:0.4rem;font-size:0.85rem;">
+        <option value="same">🔁 Same zone (automatic)</option>
+        <option value="all">🌍 All zones</option>
+        <optgroup label="── Zones ──">
+          <option value="Western Europe">Western Europe</option>
+          <option value="Eastern Europe">Eastern Europe</option>
+          <option value="Northern Europe">Northern Europe</option>
+          <option value="Southern Europe">Southern Europe</option>
+          <option value="North America">North America</option>
+          <option value="South America">South America</option>
+          <option value="Africa">Africa</option>
+          <option value="Middle East">Middle East</option>
+          <option value="E.Asia">E.Asia</option>
+          <option value="SE.Asia">SE.Asia</option>
+          <option value="Oceania">Oceania</option>
+        </optgroup>
+      </select>
+      <span id="swap-zone-hint" style="font-size:0.75rem;color:var(--gray-500)"></span>
+    </div>
+    <div id="alt-list" class="alt-list">
+      <div class="alt-loading">Loading candidates...</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeSwapModal()">Cancel</button>
+      <button class="btn btn-primary" id="confirm-swap-btn" onclick="confirmSwap()" disabled>
+        ✓ Confirm Change
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// URL relativa: funciona tanto en local (via Flask) como en Railway/nube
+const API = '/api';
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type='success') {
+  const c = document.getElementById('toast');
+  const el = document.createElement('div');
+  el.className = `toast-msg ${type}`;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'dashboard')   loadDashboard();
+  if (name === 'judges')      loadJudges();
+  if (name === 'events')      loadEvents();
+  if (name === 'assign')      loadAssignEvents();
+  if (name === 'nominations') loadNominations();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────
+let allEventsForDash = [];
+let dashFilter = null;
+
+async function loadDashboard() {
+  try {
+    const [stats, events] = await Promise.all([
+      fetch(API + '/stats').then(r => r.json()),
+      fetch(API + '/events').then(r => r.json())
+    ]);
+    document.getElementById('s-total').textContent  = stats.total_judges;
+    document.getElementById('s-active').textContent = stats.active_judges;
+    document.getElementById('s-lica').textContent   = stats.license_a;
+    document.getElementById('s-events').textContent = stats.events;
+
+    allEventsForDash = events;
+
+    // Contadores por estado
+    const count = s => events.filter(e => e.status === s).length;
+    document.getElementById('s-pending').textContent  = count('pending');
+    document.getElementById('s-assigned').textContent = count('assigned');
+    document.getElementById('s-review').textContent   = count('sent_for_review');
+    document.getElementById('s-confirmed').textContent= count('confirmed');
+    document.getElementById('s-official').textContent = count('officially_nominated');
+
+    renderDashEvents(events, null);
+  } catch(e) {
+    toast('Error connecting to Flask server. Is it running? python3 servidor.py', 'error');
+  }
+}
+
+function filterDashboard(status) {
+  dashFilter = status;
+  const resetBtn = document.getElementById('s-filter-reset');
+  if (resetBtn) resetBtn.style.display = status ? 'flex' : 'none';
+  // Resaltar tarjeta activa
+  document.querySelectorAll('#panel-status-grid .stat-card').forEach(c => c.style.outline = '');
+  renderDashEvents(allEventsForDash, status);
+}
+
+const STATUS_ROW_BG = {
+  pending:              '',
+  assigned:             '#f0fdf4',
+  sent_for_review:      '#fdf4ff',
+  confirmed:            '#fefce8',
+  officially_nominated: '#eff6ff',
+};
+
+function renderDashEvents(events, filterStatus) {
+  const tbody = document.getElementById('dash-events-body');
+  const title = document.getElementById('dash-events-title');
+  const filtered = filterStatus ? events.filter(e => e.status === filterStatus) : events;
+
+  const statusLabels = {
+    null:                  'All Events',
+    pending:               '⏳ No panel assigned',
+    assigned:              '🎯 Assigned',
+    sent_for_review:       '📤 Under Review',
+    confirmed:             '🔒 Confirmed',
+    officially_nominated:  '🌐 WDSF Nominated',
+  };
+  title.textContent = '📅 ' + (statusLabels[filterStatus] || 'All Events') +
+    (filterStatus ? ` (${filtered.length})` : '');
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="icon">📅</div>No events in this status</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const bg = STATUS_ROW_BG[e.status] || '';
+    const hasPanel = ['assigned','confirmed','sent_for_review','officially_nominated'].includes(e.status);
+    const goBtn = hasPanel
+      ? `<button class="btn btn-sm" onclick="goAssign(${e.id})" style="padding:0.2rem 0.6rem;font-size:0.75rem;">👁 Ver</button>`
+      : '';
+    return `<tr style="background:${bg}">
+      <td><strong>${e.name}</strong></td>
+      <td>${e.date || '—'}</td>
+      <td>${e.country || '—'}</td>
+      <td>${e.discipline || '—'}</td>
+      <td><span class="badge" style="background:#ede9fe;color:#5b21b6">${e.event_type || '—'}</span></td>
+      <td>${statusBadge(e.status)}</td>
+      <td>${goBtn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function statusBadge(s) {
+  const cfg = {
+    pending:         { bg:'#f3f4f6', c:'#6b7280', lbl:'⏳ pending' },
+    nominated:       { bg:'#dbeafe', c:'#1e40af', lbl:'📋 nominated' },
+    assigned:        { bg:'#d1fae5', c:'#065f46', lbl:'✅ assigned' },
+    confirmed:       { bg:'#fef9c3', c:'#78350f', lbl:'🔒 confirmed' },
+    sent_for_review: { bg:'#fce7f3', c:'#9d174d', lbl:'📤 under review' },
+  };
+  const { bg, c, lbl } = cfg[s] || { bg:'#f3f4f6', c:'#6b7280', lbl: s || '—' };
+  return `<span class="badge" style="background:${bg};color:${c}">${lbl}</span>`;
+}
+
+// Estado del evento actualmente mostrado
+let currentEventStatus = null;
+
+// ── Judges ────────────────────────────────────────────────────────────────
+async function loadJudges() {
+  const search = document.getElementById('j-search').value;
+  const license = document.getElementById('j-license').value;
+  const disc = document.getElementById('j-discipline').value;
+  const active = document.getElementById('j-active').checked;
+
+  let url = API + '/judges?';
+  if (search)  url += `search=${encodeURIComponent(search)}&`;
+  if (license) url += `license=${license}&`;
+  if (disc)    url += `discipline=${disc}&`;
+  if (active)  url += `active=1&`;
+
+  try {
+    const judges = await fetch(url).then(r => r.json());
+    document.getElementById('judges-count').textContent = `(${judges.length})`;
+    const tbody = document.getElementById('judges-body');
+    if (!judges.length) {
+      tbody.innerHTML = '<tr><td colspan="12"><div class="empty-state"><div class="icon">🔍</div>No judges found</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = judges.map((j, i) => {
+      const ballroom = (j.ballroom_disciplines || j.disciplines || []);
+      const discBadges = ballroom.map(d => `<span class="disc-badge disc-${d.replace(' ','')}">${d}</span>`).join(' ');
+      const primary   = j.primary_discipline;
+      const primaryBadge = primary
+        ? `<span class="disc-badge disc-${primary.replace(' ','')} disc-primary" onclick="editPrimary(${j.id},'${j.last_name}, ${j.first_name}')" title="Click to change">${primary} ✎</span>`
+        : `<button class="btn btn-sm btn-outline" style="font-size:0.7rem;padding:0.15rem 0.5rem" onclick="editPrimary(${j.id},'${j.last_name}, ${j.first_name}')">+ Assign</button>`;
+      const careerBadge = careerBadgeFn(j.career_level);
+      return `
+      <tr>
+        <td class="text-muted">${i+1}</td>
+        <td><strong>${j.last_name}, ${j.first_name}</strong><div style="font-size:0.7rem;color:#9ca3af">${j.nationality||''}</div></td>
+        <td>${j.representing || '—'}</td>
+        <td><span class="zone-badge zone-${j.zone}">${j.zone}</span></td>
+        <td>${primaryBadge}${specialtyBadge(j) ? `<div style="margin-top:0.2rem">${specialtyBadge(j)}</div>` : ''}</td>
+        <td>${discBadges || '<span class="text-muted">—</span>'}</td>
+        <td>${careerBadge}</td>
+        <td><span class="badge badge-${j.license_type || 'null'}">${j.license_type || '—'}</span></td>
+        <td style="text-align:center"><strong>${j.judging_world_championships ?? 0}</strong></td>
+        <td style="text-align:center">${j.judging_grand_slams ?? 0}</td>
+        <td style="text-align:center">${j.judging_continental_championships ?? 0}</td>
+        <td><span class="badge ${j.active ? 'badge-active' : 'badge-inactive'}">${j.active ? 'Active' : 'Inactive'}</span></td>
+        <td><button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})">✎</button></td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    toast('Error loading judges', 'error');
+  }
+}
+
+function careerBadgeFn(level) {
+  const map = {
+    // Adult World Championship
+    world_champion_adult:        ['🥇 World Champion',       'career-wc'],
+    world_silver_adult:          ['🥈 World Silver',          'career-wc'],
+    world_bronze_adult:          ['🥉 World Bronze',          'career-wc'],
+    world_finalist_adult:        ['🎖 World Finalist',        'career-wc'],
+    world_participant_adult:     ['🌍 World Participant',     'career-finalist'],
+    // Adult Continental
+    continental_champion_adult:  ['🥇 Continental Champ',    'career-podium'],
+    continental_silver_adult:    ['🥈 Continental Silver',   'career-podium'],
+    continental_bronze_adult:    ['🥉 Continental Bronze',   'career-podium'],
+    continental_finalist_adult:  ['🎖 Continental Finalist', 'career-podium'],
+    // Professional
+    pro_world_champion:          ['🥇 Pro World Champ',      'career-pro'],
+    pro_world_finalist:          ['🎖 Pro World Finalist',   'career-pro'],
+    pro_continental_champion:    ['🥇 Pro Continental',      'career-pro'],
+    pro_continental_finalist:    ['🎖 Pro Continental Fin.', 'career-pro'],
+    // Youth / Other age groups
+    world_champion_youth:        ['🥇 World Champ (Youth)',  'career-youth'],
+    world_silver_youth:          ['🥈 World Silver (Youth)', 'career-youth'],
+    world_bronze_youth:          ['🥉 World Bronze (Youth)', 'career-youth'],
+    world_finalist_youth:        ['🎖 World Finalist (Youth)','career-youth'],
+    continental_champion_youth:  ['🥇 Continental (Youth)',  'career-youth'],
+    continental_silver_youth:    ['🥈 Continental (Youth)',  'career-youth'],
+    continental_bronze_youth:    ['🥉 Continental (Youth)',  'career-youth'],
+    continental_finalist_youth:  ['🎖 Continental (Youth)',  'career-youth'],
+    // Open / Grand Slam
+    world_open_finalist:         ['⭐ World Open Finalist',  'career-finalist'],
+    grand_slam_finalist:         ['⭐ Grand Slam Finalist',  'career-finalist'],
+    // Legacy / fallback
+    world_champion:              ['🥇 World Champion',       'career-wc'],
+    world_finalist:              ['🎖 World Finalist',       'career-wc'],
+    continental_champion:        ['🥇 Continental Champ',    'career-podium'],
+    continental_finalist:        ['🎖 Continental Finalist', 'career-podium'],
+    international:               ['International',           'career-intl'],
+    national:                    ['National',                'career-national'],
+  };
+  const [lbl, cls] = map[level] || [level || '—', 'career-national'];
+  return `<span class="badge ${cls}" style="font-size:0.65rem">${lbl}</span>`;
+}
+
+// ── Edit Judge modal ──────────────────────────────────────────────────────
+
+async function openEditJudge(jid) {
+  try {
+    const j = await fetch(API + '/judges/' + jid).then(r => r.json());
+    document.getElementById('ej-id').value          = jid;
+    document.getElementById('ej-name').textContent  = `${j.last_name}, ${j.first_name}`;
+    document.getElementById('ej-primary').value     = j.primary_discipline || '';
+    document.getElementById('ej-career').value      = j.career_level || 'national';
+    document.getElementById('ej-active').checked    = !!j.active;
+    document.getElementById('edit-judge-modal').classList.add('open');
+  } catch(e) { toast('Error loading judge', 'error'); }
+}
+
+function closeEditJudge() {
+  document.getElementById('edit-judge-modal').classList.remove('open');
+}
+
+async function saveEditJudge() {
+  const jid     = document.getElementById('ej-id').value;
+  const primary = document.getElementById('ej-primary').value;
+  const career  = document.getElementById('ej-career').value;
+  const active  = document.getElementById('ej-active').checked ? 1 : 0;
+  try {
+    const res = await fetch(API + '/judges/' + jid, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ primary_discipline: primary || null, career_level: career, active })
+    });
+    if (!res.ok) throw new Error('Error saving');
+    closeEditJudge();
+    toast('✓ Judge updated', 'success');
+    loadJudges();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function editPrimary(jid, name) {
+  openEditJudge(jid);
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+async function loadEvents() {
+  try {
+    const events = await fetch(API + '/events').then(r => r.json());
+    const tbody = document.getElementById('events-body');
+    if (!events.length) {
+      tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div class="icon">📅</div>No events. Create a new one.</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = events.map(e => `
+      <tr>
+        <td class="text-muted">${e.id}</td>
+        <td><strong>${e.name}</strong></td>
+        <td>${e.date || '—'}</td>
+        <td>${e.country || '—'}</td>
+        <td>${e.discipline || '—'}</td>
+        <td><span class="badge" style="background:#ede9fe;color:#5b21b6">${e.event_type || '—'}</span></td>
+        <td>${e.is_ags ? '✅' : '—'}</td>
+        <td>${e.coefficient || '—'}</td>
+        <td>${statusBadge(e.status)}</td>
+        <td>
+          <div class="gap-2">
+            <button class="btn btn-sm btn-success" onclick="goAssign(${e.id})">🎯 Assign</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id}, '${e.name.replace(/'/g,"\\'")}')">🗑</button>
+          </div>
+        </td>
+      </tr>`).join('');
+  } catch(e) {
+    toast('Error loading events', 'error');
+  }
+}
+
+function openEventModal() {
+  document.getElementById('event-modal').classList.add('open');
+  document.getElementById('ev-date').value = new Date().toISOString().split('T')[0];
+}
+function closeEventModal() {
+  document.getElementById('event-modal').classList.remove('open');
+}
+
+async function createEvent() {
+  const name     = document.getElementById('ev-name').value.trim();
+  const date_val = document.getElementById('ev-date').value;
+  const country  = document.getElementById('ev-country').value.trim();
+  if (!name || !date_val || !country) { toast('Name, date and country are required', 'error'); return; }
+
+  const data = {
+    name, date: date_val, country,
+    location:   document.getElementById('ev-location').value.trim(),
+    discipline: document.getElementById('ev-discipline').value,
+    age_group:  document.getElementById('ev-age').value,
+    division:   document.getElementById('ev-division').value,
+    event_type: document.getElementById('ev-type').value,
+    coefficient: parseFloat(document.getElementById('ev-coeff').value),
+    is_ags:     document.getElementById('ev-ags').checked
+  };
+
+  try {
+    const res = await fetch(API + '/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+    if (!res.ok) throw new Error(await res.text());
+    toast('Event created successfully ✅');
+    closeEventModal();
+    loadEvents();
+    // clear fields
+    ['ev-name','ev-location','ev-country'].forEach(id => document.getElementById(id).value = '');
+  } catch(e) {
+    toast('Error creating event: ' + e.message, 'error');
+  }
+}
+
+async function deleteEvent(id, name) {
+  if (!confirm(`Delete event "${name}"?`)) return;
+  try {
+    await fetch(API + '/events/' + id, { method:'DELETE' });
+    toast('Event deleted');
+    loadEvents();
+  } catch(e) {
+    toast('Error deleting event', 'error');
+  }
+}
+
+// ── Assignment ────────────────────────────────────────────────────────────
+
+// Almacena los datos de eventos para consulta rápida
+let allEventsCache = [];
+
+async function loadAssignEvents() {
+  const sel = document.getElementById('assign-event');
+  try {
+    allEventsCache = await fetch(API + '/events').then(r => r.json());
+    const HAS_PANEL = ['assigned','confirmed','sent_for_review'];
+    const today = new Date().toISOString().slice(0, 10);
+    sel.innerHTML = '<option value="">— Select an event —</option>' +
+      allEventsCache.map(e => {
+        const hasPanelMark = HAS_PANEL.includes(e.status) ? ' ✓' : '';
+        const isPast   = e.date && e.date < today;
+        const noDate   = !e.date;
+        const warn     = isPast ? ' ⚠️ past' : noDate ? ' ⚠️ no date' : '';
+        return `<option value="${e.id}" data-status="${e.status}" ${isPast||noDate ? 'style="color:#b45309"' : ''}>${e.name} (${e.date || '?'})${hasPanelMark}${warn}</option>`;
+      }).join('');
+  } catch(e) {
+    toast('Error loading events', 'error');
+  }
+}
+
+function onEventSelected() {
+  const sel    = document.getElementById('assign-event');
+  const eid    = sel.value;
+  const hint   = document.getElementById('event-status-hint');
+  const viewBtn = document.getElementById('view-panel-btn');
+  const assignBtn = document.getElementById('assign-btn');
+
+  if (!eid) {
+    hint.style.display = 'none';
+    viewBtn.style.display = 'none';
+    document.getElementById('assign-result').style.display = 'none';
+    return;
+  }
+
+  const ev = allEventsCache.find(e => e.id == eid);
+  if (!ev) return;
+
+  // Proponer tamaño por defecto según tipo de evento (editable por el usuario)
+  const panelSizeInput = document.getElementById('panel-size-input');
+  if (panelSizeInput) {
+    panelSizeInput.value = ev.is_ags ? 12 : 9;
+  }
+
+  // Avisar si el evento no tiene fecha o es pasado
+  const today = new Date().toISOString().slice(0, 10);
+  if (!ev.date) {
+    hint.style.display = 'block';
+    hint.innerHTML = `<span style="color:#dc2626;font-weight:600">⚠️ This event has no date. Add a date in the Events tab before assigning.</span>`;
+    assignBtn.disabled = true;
+    return;
+  }
+  if (ev.date < today) {
+    hint.style.display = 'block';
+    hint.innerHTML = `<span style="color:#b45309;font-weight:600">⚠️ Past date (${ev.date}) — this event has already occurred. Cannot assign panel.</span>`;
+    assignBtn.disabled = true;
+    return;
+  }
+
+  const HAS_PANEL = ['assigned','confirmed','sent_for_review'];
+  const hasPanelAlready = HAS_PANEL.includes(ev.status);
+
+  // Mostrar pista de estado
+  hint.style.display = 'block';
+  hint.innerHTML = `Status: ${statusBadge(ev.status)}&nbsp;&nbsp;
+    ${hasPanelAlready
+      ? '<span style="font-size:0.8rem;color:#059669">✓ This event already has a panel assigned</span>'
+      : '<span style="font-size:0.8rem;color:#6b7280">No panel yet — click Run Assignment</span>'}`;
+
+  // Show "View Panel" button if panel already exists
+  viewBtn.style.display = hasPanelAlready ? 'inline-flex' : 'none';
+
+  // If panel is confirmed/under review, disable re-assignment
+  const locked = (ev.status === 'confirmed' || ev.status === 'sent_for_review');
+  assignBtn.disabled = locked;
+  assignBtn.title = locked ? 'Panel is confirmed and cannot be reassigned' : '';
+
+  // Ocultar resultado previo de otro evento
+  document.getElementById('assign-result').style.display = 'none';
+
+  // Load invited judges section for this event
+  document.getElementById('invited-section').style.display = 'block';
+  document.getElementById('invited-tags').innerHTML = '';
+  selectedInvitedIds = [];
+  loadInvitedJudgesList(ev.discipline || '');
+}
+
+// ── Invited Judges helpers ──────────────────────────────────────────────────
+
+let selectedInvitedIds = [];   // array of judge IDs (numbers)
+let allJudgesForInvite = [];   // all eligible judges for the event discipline
+
+async function loadInvitedJudgesList(discipline) {
+  const listEl = document.getElementById('invited-list');
+  listEl.innerHTML = '<div style="padding:0.75rem;color:#9ca3af;text-align:center;font-size:0.8rem">⏳ Loading judges…</div>';
+  try {
+    const res = await fetch(API + '/judges');
+    const all = await res.json();
+    // Filter by active + License A + discipline (basic client-side filter)
+    const disc = (discipline || '').trim().toLowerCase();
+    allJudgesForInvite = all.filter(j => {
+      if (!j.active || j.license_type !== 'A') return false;
+      const jDiscs = (j.disciplines || []).map(d => (d || '').toLowerCase());
+      if (!jDiscs.length) return false;
+      if (disc === 'standard') return jDiscs.some(d => d.includes('standard'));
+      if (disc === 'latin') return jDiscs.some(d => d.includes('latin'));
+      if (disc.includes('ten dance') || disc.includes('combined')) return jDiscs.some(d => d.includes('ten') || d.includes('combined') || d.includes('standard') || d.includes('latin'));
+      return true; // show all if unknown discipline
+    });
+    allJudgesForInvite.sort((a, b) => `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`));
+    renderInvitedList(allJudgesForInvite);
+  } catch(e) {
+    listEl.innerHTML = '<div style="padding:0.75rem;color:#dc2626;font-size:0.8rem">Failed to load judges.</div>';
+  }
+}
+
+function renderInvitedList(judges) {
+  const listEl = document.getElementById('invited-list');
+  if (!judges.length) {
+    listEl.innerHTML = '<div style="padding:0.75rem;color:#9ca3af;text-align:center;font-size:0.8rem">No eligible judges found.</div>';
+    return;
+  }
+  listEl.innerHTML = judges.map(j => {
+    const isSelected = selectedInvitedIds.includes(j.id);
+    const country = j.representing || j.nationality || '';
+    const specialty = j.specialty && j.specialty !== 'Unknown' && j.specialty !== 'N/A' ? ` · ${j.specialty}` : '';
+    return `<div class="invited-item${isSelected ? ' selected' : ''}" id="inv-item-${j.id}" onclick="toggleInvitedJudge(${j.id}, '${(j.last_name + ', ' + j.first_name).replace(/'/g,"\\'")}')">
+      <span style="font-weight:600">${j.last_name}, ${j.first_name}</span>
+      <span style="color:#6b7280">${country}${specialty}</span>
+    </div>`;
+  }).join('');
+}
+
+function filterInvitedList() {
+  const q = (document.getElementById('invited-search').value || '').toLowerCase().trim();
+  if (!q) { renderInvitedList(allJudgesForInvite); return; }
+  const filtered = allJudgesForInvite.filter(j =>
+    `${j.first_name} ${j.last_name} ${j.representing || ''} ${j.nationality || ''}`.toLowerCase().includes(q)
+  );
+  renderInvitedList(filtered);
+}
+
+function toggleInvitedJudge(id, label) {
+  if (selectedInvitedIds.includes(id)) {
+    selectedInvitedIds = selectedInvitedIds.filter(x => x !== id);
+  } else {
+    selectedInvitedIds.push(id);
+  }
+  // Update item style
+  const item = document.getElementById(`inv-item-${id}`);
+  if (item) item.classList.toggle('selected', selectedInvitedIds.includes(id));
+  renderInvitedTags();
+}
+
+function renderInvitedTags() {
+  const tagsEl = document.getElementById('invited-tags');
+  tagsEl.innerHTML = selectedInvitedIds.map(id => {
+    const j = allJudgesForInvite.find(x => x.id === id);
+    const label = j ? `${j.last_name}, ${j.first_name}` : `ID ${id}`;
+    return `<span class="invited-tag">✈️ ${label}
+      <button onclick="toggleInvitedJudge(${id}, '')" title="Remove">×</button>
+    </span>`;
+  }).join('');
+}
+
+function getInvitedIds() { return [...selectedInvitedIds]; }
+
+function toggleInvited() {
+  const body = document.getElementById('invited-body');
+  const icon = document.getElementById('invited-toggle-icon');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  icon.textContent = isOpen ? '▼ show' : '▲ hide';
+}
+
+async function loadExistingPanel() {
+  const eid = document.getElementById('assign-event').value;
+  if (!eid) return;
+
+  const btn = document.getElementById('view-panel-btn');
+  btn.innerHTML = '⏳ Loading...';
+  btn.disabled = true;
+
+  try {
+    const [ev, panelRows] = await Promise.all([
+      fetch(API + '/events/' + eid).then(r => r.json()),
+      fetch(API + '/events/' + eid + '/panel').then(r => r.json())
+    ]);
+
+    if (!panelRows.length) {
+      toast('This event has no saved panel', 'error');
+      return;
+    }
+
+    const panel = panelRows.filter(j => j.role !== 'reserve');
+    const zones = [...new Set(panel.map(j => j.zone))].sort();
+
+    // Añadir campos necesarios para judgeCard
+    panelRows.forEach(j => {
+      j.representing_normalized = j.representing_normalized ||
+        (j.representing || j.nationality || '—');
+    });
+
+    // Summary
+    document.getElementById('assign-summary').innerHTML = `
+      <div class="stats-grid" style="margin-bottom:0">
+        <div class="stat-card"><div class="stat-icon green">✅</div><div>
+          <div class="stat-value">${panel.length}</div>
+          <div class="stat-label">Judges in panel</div></div></div>
+        <div class="stat-card"><div class="stat-icon orange">🌍</div><div>
+          <div class="stat-value">${zones.length}</div>
+          <div class="stat-label">Zones covered</div></div></div>
+      </div>`;
+
+    // Zones
+    document.getElementById('assign-zones').innerHTML = zones.map(z =>
+      `<span class="zone-badge zone-${z}" style="font-size:0.875rem;padding:0.3rem 0.8rem">${z}</span>`
+    ).join('') || '<span class="text-muted">—</span>';
+
+    currentEventId     = ev.id;
+    currentEventStatus = ev.status;
+
+    // Panel cards
+    document.getElementById('panel-grid').innerHTML =
+      panel.map((j, i) => judgeCard(j, i + 1)).join('');
+
+    // Panel logic — hide it (no fresh logic when loading existing)
+    document.getElementById('panel-logic-card').style.display = 'none';
+
+    // Barra de confirmación
+    updateConfirmBar(ev.name, ev.status);
+
+    // Correlation warnings
+    const warnDiv = document.getElementById('panel-corr-warnings');
+    warnDiv.style.display = 'none';
+    warnDiv.innerHTML = '';
+    const judgeNames = panel.map(j => j.name || (j.first_name && j.last_name ? `${j.first_name} ${j.last_name}` : null)).filter(Boolean);
+    const discipline = (ev.discipline || '').trim();
+    if (judgeNames.length >= 2 && discipline) {
+      fetch(API + '/correlations/panel-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ names: judgeNames, discipline })
+      })
+      .then(r => r.ok ? r.json() : null)
+      .then(score => {
+        if (!score) return;
+        const risks = score.high_risk_pairs || [];
+        if (risks.length === 0) {
+          warnDiv.innerHTML = `<div class="alert alert-success">✅ No high-correlation pairs detected in this panel (${discipline}).</div>`;
+        } else {
+          const rows = risks.map(p => `
+            <tr>
+              <td style="font-weight:600">${p.judge_a}</td>
+              <td style="font-weight:600">${p.judge_b}</td>
+              <td style="text-align:center;color:#dc2626;font-weight:700">r = ${p.correlation.toFixed(3)}</td>
+              <td style="text-align:center;color:#6b7280">${p.n_competitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
+            </tr>`).join('');
+          warnDiv.innerHTML = `
+            <div class="card" style="border:2px solid #ef4444;">
+              <div class="card-title" style="color:#dc2626">⚠️ High Correlation Warning — ${discipline}</div>
+              <div class="alert alert-error" style="margin-bottom:1rem">
+                The following judge pairs have shown very similar scoring patterns in past ${discipline} competitions
+                (Spearman r &gt; 0.70). Consider replacing one judge from each pair to ensure panel diversity.
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr>
+                    <th>Judge A</th><th>Judge B</th>
+                    <th style="text-align:center">Correlation</th>
+                    <th style="text-align:center">Evidence</th>
+                  </tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+            </div>`;
+        }
+        warnDiv.style.display = 'block';
+      })
+      .catch(() => {});
+    }
+
+    document.getElementById('assign-result').style.display = 'block';
+    document.getElementById('assign-result').scrollIntoView({ behavior:'smooth', block:'start' });
+
+  } catch(e) {
+    toast('Error loading panel: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '👁 View Current Panel';
+    btn.disabled = false;
+  }
+}
+
+function goAssign(id) {
+  showPage('assign');
+  document.querySelectorAll('.nav-btn')[3].classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach((b,i) => { if(i!==3) b.classList.remove('active'); });
+  setTimeout(async () => {
+    document.getElementById('assign-event').value = id;
+    onEventSelected();
+    // Si ya tiene panel, cargarlo automáticamente
+    const ev = allEventsCache.find(e => e.id == id);
+    if (ev && ['assigned','confirmed','sent_for_review'].includes(ev.status)) {
+      await loadExistingPanel();
+    }
+  }, 300);
+}
+
+async function runAssignment() {
+  const id = document.getElementById('assign-event').value;
+  if (!id) { toast('Please select an event first', 'error'); return; }
+
+  const btn = document.getElementById('assign-btn');
+  btn.innerHTML = '<span class="spinner"></span> Calculating...';
+  btn.disabled = true;
+  document.getElementById('assign-result').style.display = 'none';
+
+  const panelSize = parseInt(document.getElementById('panel-size-input').value) || 9;
+  const invitedIds = getInvitedIds();
+
+  try {
+    const res = await fetch(API + '/events/' + id + '/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ panel_size: panelSize, invited_judge_ids: invitedIds })
+    });
+    const data = await res.json();
+    if (!res.ok) { throw new Error(data.error || 'Assignment error'); }
+
+    displayResult(data);
+    toast(`Panel assigned: ${data.panel.length} judges ✅`);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '▶ Run Assignment';
+    btn.disabled = false;
+  }
+}
+
+function displayResult(data) {
+  const { event, panel, reserves, stats, zones, exclusions, panel_logic, invited_summary } = data;
+
+  // Summary
+  document.getElementById('assign-summary').innerHTML = `
+    <div class="stats-grid" style="margin-bottom:0">
+      <div class="stat-card"><div class="stat-icon purple">👥</div><div><div class="stat-value">${stats.candidates}</div><div class="stat-label">Eligible candidates</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">✅</div><div><div class="stat-value">${stats.assigned}</div><div class="stat-label">Judges assigned</div></div></div>
+      <div class="stat-card"><div class="stat-icon orange">🌍</div><div><div class="stat-value">${zones.length}</div><div class="stat-label">Zones covered</div></div></div>
+    </div>
+    ${exclusions.length ? `<div class="alert alert-warning" style="margin-top:1rem">⚠️ ${exclusions.join('; ')}</div>` : ''}
+    ${(() => {
+      if (!invited_summary || invited_summary.length === 0) return '';
+      const included = invited_summary.filter(x => x.included);
+      const excluded = invited_summary.filter(x => !x.included);
+      const rows = invited_summary.map(x => `
+        <tr>
+          <td style="font-weight:600">${x.name}</td>
+          <td style="text-align:center">${x.included
+            ? '<span style="color:#065f46;font-weight:700">✅ Included</span>'
+            : '<span style="color:#dc2626;font-weight:700">❌ Not included</span>'}</td>
+          <td style="color:#6b7280;font-size:0.8rem">${x.reason}</td>
+        </tr>`).join('');
+      return `<div style="margin-top:1rem;border:1px solid #bfdbfe;border-radius:8px;overflow:hidden">
+        <div style="background:#eff6ff;padding:0.5rem 0.75rem;font-weight:700;font-size:0.85rem;color:#1e40af">
+          ✈️ Organiser's Invited Judges — ${included.length} included, ${excluded.length} not eligible
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+          <thead><tr style="background:#f8faff">
+            <th style="padding:0.4rem 0.75rem;text-align:left;color:#374151">Judge</th>
+            <th style="padding:0.4rem 0.75rem;text-align:center;color:#374151">Status</th>
+            <th style="padding:0.4rem 0.75rem;text-align:left;color:#374151">Reason</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    })()}
+  `;
+
+  // Zones
+  document.getElementById('assign-zones').innerHTML = zones.map(z =>
+    `<span class="zone-badge zone-${z}" style="font-size:0.875rem;padding:0.3rem 0.8rem">${z}</span>`
+  ).join('') || '<span class="text-muted">—</span>';
+
+  // Guardar event id y estado para el swap y confirm
+  currentEventId     = event.id;
+  currentEventStatus = event.status || 'assigned';
+
+  // Panel cards
+  document.getElementById('panel-grid').innerHTML = panel.map((j, i) => judgeCard(j, i+1)).join('');
+
+  // Panel logic section
+  renderPanelLogic(panel_logic);
+
+  // Barra de confirmación
+  updateConfirmBar(event.name, event.status || 'assigned');
+
+  // Hide warnings while computing
+  const warnDiv = document.getElementById('panel-corr-warnings');
+  warnDiv.style.display = 'none';
+  warnDiv.innerHTML = '';
+
+  // Correlation warnings — check high-risk pairs for the discipline of this event
+  const judgeNames = panel.map(j => j.name || (j.first_name && j.last_name ? `${j.first_name} ${j.last_name}` : null)).filter(Boolean);
+  const discipline = (event.discipline || '').trim();
+  if (judgeNames.length >= 2 && discipline) {
+    fetch(API + '/correlations/panel-score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names: judgeNames, discipline })
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(score => {
+      if (!score) return;
+      const risks = score.high_risk_pairs || [];
+      if (risks.length === 0) {
+        warnDiv.innerHTML = `
+          <div class="alert alert-success">
+            ✅ No high-correlation pairs detected in this panel (${discipline}).
+          </div>`;
+      } else {
+        const rows = risks.map(p => `
+          <tr>
+            <td style="font-weight:600">${p.judge_a}</td>
+            <td style="font-weight:600">${p.judge_b}</td>
+            <td style="text-align:center;color:#dc2626;font-weight:700">r = ${p.correlation.toFixed(3)}</td>
+            <td style="text-align:center;color:#6b7280">${p.n_competitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
+          </tr>`).join('');
+        warnDiv.innerHTML = `
+          <div class="card" style="border:2px solid #ef4444;">
+            <div class="card-title" style="color:#dc2626">⚠️ High Correlation Warning — ${discipline}</div>
+            <div class="alert alert-error" style="margin-bottom:1rem">
+              The following judge pairs have shown very similar scoring patterns in past ${discipline} competitions
+              (Spearman r &gt; 0.70). Consider replacing one judge from each pair to ensure panel diversity.
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr>
+                  <th>Judge A</th><th>Judge B</th>
+                  <th style="text-align:center">Correlation</th>
+                  <th style="text-align:center">Evidence</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }
+      warnDiv.style.display = 'block';
+    })
+    .catch(() => { /* silently skip if no correlation data */ });
+  }
+
+  document.getElementById('assign-result').style.display = 'block';
+  document.getElementById('assign-result').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function updateConfirmBar(eventName, status) {
+  const bar        = document.getElementById('confirm-bar');
+  const nameEl     = document.getElementById('confirm-event-name');
+  const statusEl   = document.getElementById('confirm-event-status-line');
+  const btnConf    = document.getElementById('btn-confirm-panel');
+  const btnSend    = document.getElementById('btn-send-review');
+  const btnReopen  = document.getElementById('btn-reopen-panel');
+
+  nameEl.textContent = eventName || '—';
+  statusEl.innerHTML = `Current status: ${statusBadge(status)}`;
+
+  bar.className = 'confirm-bar';
+  if (status === 'confirmed')       bar.classList.add('is-confirmed');
+  if (status === 'sent_for_review') bar.classList.add('is-sent');
+
+  const isLocked = (status === 'confirmed' || status === 'sent_for_review' || status === 'officially_nominated');
+
+  // Botón Confirmar
+  btnConf.disabled = isLocked || status !== 'assigned';
+  btnConf.innerHTML = isLocked ? '🔒 Panel Confirmed' : '✓ Confirm Panel';
+
+  // Botón Enviar a revisión
+  btnSend.disabled  = status === 'sent_for_review' || status === 'officially_nominated';
+  btnSend.innerHTML = (status === 'sent_for_review') ? '✓ Sent for Review' : '📤 Send for Review';
+
+  // Botón Reabrir — visible solo cuando está bloqueado
+  btnReopen.style.display = isLocked ? 'inline-flex' : 'none';
+
+  bar.style.display = 'flex';
+}
+
+async function reopenPanel() {
+  if (!currentEventId) return;
+  if (!confirm('Are you sure you want to reopen this panel? It will return to "assigned" status and you will be able to change the number of judges or reassign.')) return;
+  try {
+    const res  = await fetch(`${API}/events/${currentEventId}/reopen`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error reopening panel');
+    currentEventStatus = 'assigned';
+    updateConfirmBar(document.getElementById('confirm-event-name').textContent, 'assigned');
+    // Desbloquear botón de asignación
+    const assignBtn = document.getElementById('assign-btn');
+    if (assignBtn) { assignBtn.disabled = false; assignBtn.title = ''; }
+    // Actualizar hint de estado
+    const hint = document.getElementById('event-status-hint');
+    if (hint) hint.innerHTML = `Status: ${statusBadge('assigned')}&nbsp;&nbsp;<span style="font-size:0.8rem;color:#059669">✓ Panel reopened — you can reassign</span>`;
+    toast('Panel reopened. You can now change the number of judges and reassign. ✅');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+function specialtyBadge(j) {
+  const sp = j.specialty || 'Unknown';
+  const labels = { Standard:'🎩 Std', Latin:'💃 Lat', '10-Dance':'⚡ 10D', Both:'⚡ 10D', Unknown:'', 'N/A':'' };
+  if (sp === 'Unknown' || sp === 'N/A' || !sp) return '';
+  return `<span class="specialty-badge spec-${sp}">${labels[sp] || sp}</span>`;
+}
+
+function panelStats(j) {
+  const std = j.std_panels_count || 0;
+  const lat = j.lat_panels_count || 0;
+  if (std + lat === 0) return '<span style="font-size:0.65rem;color:#9ca3af">No GS/WCH data</span>';
+  return `<span style="font-size:0.65rem;color:#6b7280">
+    STD:<strong style="color:#1e3a8a">${std}</strong>
+    LAT:<strong style="color:#9d174d">${lat}</strong>
+    <span style="color:#9ca3af">(GS+WCH)</span>
+  </span>`;
+}
+
+function renderPanelLogic(logic) {
+  if (!logic) return;
+  const card = document.getElementById('panel-logic-card');
+  const content = document.getElementById('panel-logic-content');
+  if (!card || !content) return;
+
+  const mandatoryList = logic.mandatory_countries.map(c =>
+    `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:#dbeafe;color:#1e40af;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.75rem;font-weight:600;margin:0.15rem">${c}</span>`
+  ).join(' ');
+
+  const top10 = logic.top3_ranking.map(r => {
+    const isMandatory = r.pos <= 3;
+    const bg = isMandatory ? '#d1fae5' : '#f3f4f6';
+    const col = isMandatory ? '#065f46' : '#6b7280';
+    return `<span style="display:inline-flex;align-items:center;gap:0.3rem;background:${bg};color:${col};padding:0.2rem 0.55rem;border-radius:999px;font-size:0.72rem;font-weight:600;margin:0.15rem">
+      #${r.pos} ${r.country}${isMandatory ? ' ★' : ''}
+    </span>`;
+  }).join('');
+
+  const criteriaRows = logic.score_criteria.map(c => `
+    <tr>
+      <td style="padding:0.4rem 0.6rem;font-weight:600;font-size:0.8rem;white-space:nowrap">${c.label}</td>
+      <td style="padding:0.4rem 0.6rem;text-align:center"><span style="font-weight:700;color:#4f46e5">${c.max}</span></td>
+      <td style="padding:0.4rem 0.6rem;font-size:0.78rem;color:#6b7280">${c.description}</td>
+    </tr>`).join('');
+
+  const excRules = logic.exclusion_rules.map(r =>
+    `<li style="font-size:0.78rem;color:#6b7280;margin-bottom:0.2rem">${r}</li>`
+  ).join('');
+
+  const asiaNote = logic.event_in_asia
+    ? `<div class="alert alert-warning" style="margin-top:1rem">🌏 <strong>Asia Rule active:</strong> At least ${logic.asia_minimum} of ${logic.panel_size} judges must come from Asia (event held in ${logic.host_country}, zone: ${logic.host_zone}).</div>`
+    : '';
+
+  content.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap">
+      <div>
+        <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.5rem">📌 Mandatory spots</div>
+        <p style="font-size:0.78rem;color:#6b7280;margin-bottom:0.5rem">These countries always get a reserved spot regardless of score:</p>
+        ${mandatoryList}
+
+        <div style="font-size:0.8rem;font-weight:700;color:#374151;margin:1rem 0 0.5rem">🏆 Top-10 ${logic.discipline} ranking (★ = mandatory)</div>
+        <div>${top10}</div>
+        ${asiaNote}
+      </div>
+      <div>
+        <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.5rem">📊 Scoring criteria (max 100 pts)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+            <thead><tr style="background:#f9fafb">
+              <th style="padding:0.4rem 0.6rem;text-align:left;font-size:0.72rem;color:#6b7280">Criterion</th>
+              <th style="padding:0.4rem 0.6rem;text-align:center;font-size:0.72rem;color:#6b7280">Max</th>
+              <th style="padding:0.4rem 0.6rem;text-align:left;font-size:0.72rem;color:#6b7280">Detail</th>
+            </tr></thead>
+            <tbody>${criteriaRows}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:1rem">
+          <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.4rem">🚫 Exclusion rules</div>
+          <ul style="padding-left:1.2rem;margin:0">${excRules}</ul>
+        </div>
+      </div>
+    </div>`;
+
+  card.style.display = 'block';
+}
+
+function scoreBreakdownHtml(j) {
+  const bd = j.score_breakdown;
+  if (!bd) return '';
+  const reason = j.selection_reason || '';
+  const rows = [
+    { label: 'A. Dancing career',      key: 'career',       max: 30, icon: '🏅' },
+    { label: 'B. Judging experience',  key: 'experience',   max: 30, icon: '⚖️' },
+    { label: 'C. Country ranking',     key: 'ranking',      max: 20, icon: '🌍' },
+    { label: 'D. Zone distribution',   key: 'zone',         max: 20, icon: '🗺️' },
+    { label: 'E. Discipline specialty',key: 'specialty',    max: 10, icon: '💃' },
+    { label: 'F. Panel independence',  key: 'independence', max: 15, icon: '🔬' },
+  ].map(r => {
+    const item = bd[r.key] || {pts:0, max:r.max, detail:''};
+    const pct  = Math.max(0, Math.min(100, (item.pts / r.max) * 100));
+    const col  = item.pts >= r.max * 0.7 ? '#059669' : item.pts <= 0 ? '#dc2626' : '#d97706';
+    const sign = item.pts > 0 ? '+' : '';
+    return `<div style="margin-bottom:0.35rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.68rem;color:#374151;margin-bottom:0.15rem">
+        <span>${r.icon} ${r.label}</span>
+        <span style="font-weight:700;color:${col}">${sign}${item.pts}<span style="color:#9ca3af;font-weight:400">/${r.max}</span></span>
+      </div>
+      <div style="height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${col};border-radius:2px;transition:width 0.4s"></div>
+      </div>
+      <div style="font-size:0.62rem;color:#6b7280;margin-top:0.1rem">${item.detail}</div>
+    </div>`;
+  }).join('');
+
+  return `
+    <details style="margin-top:0.6rem" class="score-details">
+      <summary style="font-size:0.72rem;font-weight:600;color:#4f46e5;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.3rem;user-select:none">
+        <span class="details-arrow">▶</span> Why selected?
+      </summary>
+      <div style="margin-top:0.5rem;padding:0.6rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">
+        ${reason ? `<div style="font-size:0.72rem;color:#1e293b;font-weight:600;margin-bottom:0.5rem;line-height:1.4">📋 ${reason}</div>` : ''}
+        <div style="font-size:0.7rem;font-weight:700;color:#6b7280;margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.04em">Score breakdown</div>
+        ${rows}
+      </div>
+    </details>`;
+}
+
+function judgeCard(j, pos, isReserve=false) {
+  const roleMap = {
+    host_country:  ['host',   '🏠 Host Country', 'role-host'],
+    top3_required: ['top3',   '⭐ Top-3',         'role-top3'],
+    asia_quota:    ['top3',   '🌏 Asia Quota',    'role-top3'],
+    invited:       ['',       '✈️ Invited',        'role-top3'],
+    selected:      ['',       'Selected',         'role-selected'],
+    reserve:       ['reserve','Reserve',          'role-reserve']
+  };
+  const [cls, roleLabel, roleCls] = roleMap[j.role] || ['', j.role, 'role-selected'];
+  const invitedBadge = j.invited ? `<span class="badge-invited">✈️ Invited</span>` : '';
+  const wch = j.judging_world_championships || 0;
+  const gs  = j.judging_grand_slams || 0;
+  const cch = j.judging_continental_championships || 0;
+  const score = j.score || 0;
+  const country = j.representing_normalized || j.representing || j.nationality || '—';
+  // ID del juez: "judge_id" viene del JOIN en panel_detail, "id" viene del assign directo
+  const jid = j.judge_id || j.id;
+
+  const swapBtn = !isReserve
+    ? `<button class="btn-swap" onclick="openSwapModal(${jid},'${j.last_name}, ${j.first_name}','${country}',${score})">
+        ⇄ Cambiar juez
+       </button>`
+    : '';
+
+  return `
+    <div class="judge-card ${cls}" id="jcard-${jid}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="judge-pos">${isReserve ? '🔄 Reserve' : `#${pos}`}</div>
+        <span class="role-badge ${roleCls}">${roleLabel}</span>
+      </div>
+      <div class="judge-name">${j.last_name}, ${j.first_name}</div>
+      <div class="judge-country">
+        <span class="zone-badge zone-${j.zone}">${j.zone}</span>
+        &nbsp;${country}
+      </div>
+      <div class="judge-score">
+        <div>
+          <div class="score-val">${score}</div>
+          <div style="font-size:0.65rem;color:var(--gray-500)">/ 100 pts</div>
+        </div>
+        <div class="score-bar-wrap">
+          <div class="score-bar">
+            <div class="score-fill" style="width:${score}%"></div>
+          </div>
+        </div>
+      </div>
+      <div class="judge-exp">
+        WCH: <strong>${wch}</strong> &nbsp;·&nbsp; GS: <strong>${gs}</strong> &nbsp;·&nbsp; CCH: <strong>${cch}</strong>
+        &nbsp;·&nbsp; Lic: <span class="badge badge-${j.license_type||'null'}">${j.license_type||'—'}</span>
+      </div>
+      <div style="margin-top:0.45rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
+        ${specialtyBadge(j)}
+        ${panelStats(j)}
+        ${invitedBadge}
+      </div>
+      ${scoreBreakdownHtml(j)}
+      ${swapBtn}
+    </div>`;
+}
+
+// ── Swap logic ─────────────────────────────────────────────────────────────
+
+let currentEventId = null;
+let swapOldJudgeId = null;
+let swapNewJudgeId = null;
+
+async function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
+  swapOldJudgeId = judgeId;
+  swapNewJudgeId = null;
+
+  // Resetear selector de zona
+  document.getElementById('swap-zone-select').value = 'same';
+  document.getElementById('swap-zone-hint').textContent = '';
+
+  // Mostrar juez actual
+  document.getElementById('swap-current').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <strong>${judgeName}</strong>
+        <div style="font-size:0.8rem;color:var(--gray-500);margin-top:0.2rem">
+          ${judgeCountry} &nbsp;·&nbsp; Current score: <strong style="color:var(--primary)">${judgeScore}</strong>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--gray-400)">Judge to replace</div>
+    </div>`;
+
+  document.getElementById('confirm-swap-btn').disabled = true;
+  document.getElementById('swap-modal').classList.add('open');
+  await fetchAlternatives('same');
+}
+
+async function changeSwapZone() {
+  if (!swapOldJudgeId) return;
+  swapNewJudgeId = null;
+  document.getElementById('confirm-swap-btn').disabled = true;
+  const zone = document.getElementById('swap-zone-select').value;
+  await fetchAlternatives(zone);
+}
+
+async function fetchAlternatives(zone) {
+  document.getElementById('alt-list').innerHTML = '<div class="alt-loading">⏳ Loading candidates...</div>';
+  try {
+    const res  = await fetch(`${API}/events/${currentEventId}/alternatives/${swapOldJudgeId}?zone=${encodeURIComponent(zone)}`);
+    const alts = await res.json();
+    if (!res.ok) { throw new Error(alts.error || 'Error loading alternatives'); }
+    const hint = document.getElementById('swap-zone-hint');
+    hint.textContent = `${alts.length} candidate${alts.length !== 1 ? 's' : ''} found`;
+    renderAlternatives(alts);
+  } catch(e) {
+    document.getElementById('alt-list').innerHTML =
+      `<div class="alt-loading" style="color:#dc2626">✗ ${e.message}</div>`;
+  }
+}
+
+function renderAlternatives(alts) {
+  if (!alts.length) {
+    document.getElementById('alt-list').innerHTML =
+      '<div class="alt-loading">No candidates available for this zone. Try another zone or "All zones".</div>';
+    return;
+  }
+
+  document.getElementById('alt-list').innerHTML = alts.map((a, i) => {
+    const wch      = a.judging_world_championships || 0;
+    const gs       = a.judging_grand_slams || 0;
+    const cch      = a.judging_continental_championships || 0;
+    const zoneDiff = !a.same_zone
+      ? `<span style="font-size:0.65rem;color:#b45309;font-weight:600">⚠️ different zone</span>&nbsp;`
+      : '';
+    return `
+      <div class="alt-item" id="alt-${a.id}" onclick="selectAlternative(${a.id})">
+        <div class="alt-rank">${i+1}</div>
+        <div class="alt-info">
+          <div class="alt-name">${a.last_name}, ${a.first_name}</div>
+          <div class="alt-meta">
+            ${zoneDiff}<span class="zone-badge zone-${a.zone}" style="font-size:0.65rem">${a.zone}</span>
+            &nbsp;${a.country}
+            &nbsp;·&nbsp; WCH:<strong>${wch}</strong> GS:<strong>${gs}</strong> CCH:<strong>${cch}</strong>
+            ${a.specialty && a.specialty !== 'Unknown'
+              ? `&nbsp;<span class="specialty-badge spec-${a.specialty}" style="font-size:0.6rem">
+                  ${{Standard:'🎩',Latin:'💃',Both:'⚡'}[a.specialty]||''} ${a.specialty}
+                 </span>`
+              : ''}
+          </div>
+        </div>
+        <div class="alt-score">
+          <div class="alt-score-val">${a.score}</div>
+          <div class="alt-score-lbl">/ 100</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function selectAlternative(id) {
+  // Desmarcar anterior
+  document.querySelectorAll('.alt-item').forEach(el => el.classList.remove('selected'));
+  document.getElementById(`alt-${id}`).classList.add('selected');
+  swapNewJudgeId = id;
+  document.getElementById('confirm-swap-btn').disabled = false;
+}
+
+function closeSwapModal() {
+  document.getElementById('swap-modal').classList.remove('open');
+  swapOldJudgeId = null;
+  swapNewJudgeId = null;
+}
+
+async function confirmSwap() {
+  if (!swapOldJudgeId || !swapNewJudgeId) return;
+  const btn = document.getElementById('confirm-swap-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const res  = await fetch(`${API}/events/${currentEventId}/swap`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ old_judge_id: swapOldJudgeId, new_judge_id: swapNewJudgeId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error swapping judge');
+
+    closeSwapModal();
+    toast('✓ Judge changed successfully', 'success');
+
+    // Refrescar el panel completo con los datos actualizados
+    const panel    = data.panel.filter(j => j.role !== 'reserve');
+    const reserves = data.panel.filter(j => j.role === 'reserve');
+    document.getElementById('panel-grid').innerHTML =
+      panel.map((j, i) => judgeCard(j, i+1)).join('');
+    document.getElementById('reserves-grid').innerHTML =
+      reserves.map(j => judgeCard(j, 0, true)).join('');
+
+    // Actualizar zonas
+    const zones = [...new Set(panel.map(j => j.zone))].sort();
+    document.getElementById('assign-zones').innerHTML = zones.map(z =>
+      `<span class="zone-badge zone-${z}" style="font-size:0.875rem;padding:0.3rem 0.8rem">${z}</span>`
+    ).join('');
+
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm Change';
+  }
+}
+
+// ── Nominations (WDSF Official) ────────────────────────────────────────────
+
+async function loadNominations() {
+  const container = document.getElementById('nom-list');
+  container.innerHTML = '<div class="card" style="text-align:center;padding:2rem;color:var(--gray-500)">⏳ Loading...</div>';
+  try {
+    const data = await fetch(API + '/nominations').then(r => r.json());
+    if (!data.length) {
+      container.innerHTML = `<div class="card">
+        <div class="empty-state">
+          <div class="icon">🌐</div>
+          <p>No data yet. Click <strong>🔄 Sync now</strong> to download WDSF nominees.</p>
+        </div></div>`;
+      return;
+    }
+    const lastSync = data[0]?.synced_at || '';
+    if (lastSync) document.getElementById('nom-last-sync').textContent =
+      'Last sync: ' + lastSync.replace('T',' ').slice(0,16);
+
+    container.innerHTML = data.map(comp => {
+      const adjRows = comp.adjudicators.map((j, i) => `
+        <tr style="${j.matched ? '' : 'opacity:0.6'}">
+          <td><span class="badge" style="background:#d1fae5;color:#065f46;font-size:0.7rem">${j.position||String.fromCharCode(65+i)}</span></td>
+          <td><strong>${j.judge_name}</strong>
+            ${j.matched ? `<span style="font-size:0.65rem;color:#059669;margin-left:0.3rem">✓ in DB</span>` : `<span style="font-size:0.65rem;color:#9ca3af;margin-left:0.3rem">unmatched</span>`}
+          </td>
+          <td>${j.judge_country||'—'}</td>
+          <td><span class="badge badge-confirmed">confirmed</span></td>
+        </tr>`).join('');
+
+      const nomRows = comp.nominated.map(j => {
+        const statusColor = j.status?.toLowerCase().includes('declin') ? '#fee2e2:#991b1b'
+          : j.status?.toLowerCase().includes('accept') ? '#d1fae5:#065f46'
+          : '#fef9c3:#78350f';
+        const [bg, c] = statusColor.split(':');
+        return `
+        <tr style="${j.matched ? '' : 'opacity:0.6'}">
+          <td>—</td>
+          <td><strong>${j.judge_name}</strong>
+            ${j.matched ? `<span style="font-size:0.65rem;color:#059669;margin-left:0.3rem">✓ in DB</span>` : ''}
+          </td>
+          <td>${j.judge_country||'—'}</td>
+          <td><span class="badge" style="background:${bg};color:${c};font-size:0.65rem">${j.status||'—'}</span></td>
+        </tr>`;
+      }).join('');
+
+      const discBadge = comp.discipline
+        ? `<span class="disc-badge disc-${comp.discipline.replace(' ','')}">${comp.discipline}</span>` : '';
+
+      return `
+      <div class="card" style="margin-bottom:1.25rem">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
+          <div>
+            <div style="font-weight:700;font-size:1rem;color:#1e293b">${comp.name}</div>
+            <div style="font-size:0.8rem;color:var(--gray-500);margin-top:0.2rem">
+              📅 ${comp.date||'—'} &nbsp;·&nbsp; 📍 ${comp.location||'—'}
+              &nbsp;·&nbsp; ${discBadge}
+            </div>
+          </div>
+          <a href="${comp.url}" target="_blank" class="btn btn-sm btn-outline">🔗 WDSF</a>
+        </div>
+        ${adjRows ? `
+        <div style="font-size:0.75rem;font-weight:700;color:#065f46;margin-bottom:0.3rem">✅ CONFIRMED PANEL (${comp.adjudicators.length} judges)</div>
+        <div class="table-wrap" style="margin-bottom:0.75rem">
+          <table><thead><tr><th>Pos.</th><th>Name</th><th>Country</th><th>Status</th></tr></thead>
+          <tbody>${adjRows}</tbody></table></div>` : ''}
+        ${nomRows ? `
+        <div style="font-size:0.75rem;font-weight:700;color:#78350f;margin-bottom:0.3rem">📋 NOMINATED (${comp.nominated.length})</div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Pos.</th><th>Name</th><th>Country</th><th>Status</th></tr></thead>
+          <tbody>${nomRows}</tbody></table></div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = `<div class="alert alert-error">Error loading nominations: ${e.message}</div>`;
+  }
+}
+
+async function runSync() {
+  const btn     = document.getElementById('btn-sync-nom');
+  const loading = document.getElementById('nom-loading');
+  const logEl   = document.getElementById('nom-sync-log');
+
+  btn.disabled  = true;
+  btn.innerHTML = '⏳ Syncing...';
+  loading.style.display = 'block';
+  logEl.textContent     = '';
+
+  try {
+    const res  = await fetch(API + '/sync_nominations', { method:'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error');
+    logEl.textContent = data.output || 'Completado.';
+    toast('✅ Sync completed', 'success');
+    await loadNominations();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    logEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled  = false;
+    btn.innerHTML = '🔄 Sync now';
+    setTimeout(() => { loading.style.display = 'none'; }, 8000);
+  }
+}
+
+// ── Panel Confirmation ─────────────────────────────────────────────────────
+
+async function confirmPanel() {
+  if (!currentEventId) return;
+  const btn = document.getElementById('btn-confirm-panel');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="border-color:rgba(0,0,0,0.2);border-top-color:#059669"></span> Confirming...';
+
+  try {
+    const res  = await fetch(`${API}/events/${currentEventId}/confirm`, { method:'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error confirming panel');
+
+    currentEventStatus = 'confirmed';
+    const eventName = document.getElementById('confirm-event-name').textContent;
+    updateConfirmBar(eventName, 'confirmed');
+    toast(`✅ Panel confirmed. ${data.committed_judges?.length || 0} judges committed.`, 'success');
+
+    // Marcar los jueces del panel como comprometidos visualmente
+    if (data.committed_judges) {
+      data.committed_judges.forEach(j => {
+        const card = document.getElementById(`jcard-${j.id}`);
+        if (card) card.classList.add('committed');
+      });
+    }
+
+    // Refresh event list if visible
+    const evPage = document.getElementById('page-events');
+    if (evPage && evPage.classList.contains('active')) loadEvents();
+
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '✓ Confirm Panel';
+  }
+}
+
+async function sendForReview() {
+  if (!currentEventId) return;
+  // Si aún no está confirmado, confirmarlo primero
+  if (currentEventStatus === 'assigned') {
+    await confirmPanel();
+    if (currentEventStatus !== 'confirmed') return; // confirmación falló
+  }
+  const btn = document.getElementById('btn-send-review');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Sending...';
+
+  try {
+    const res  = await fetch(`${API}/events/${currentEventId}/send_review`, { method:'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error sending for review');
+
+    currentEventStatus = 'sent_for_review';
+    const eventName = document.getElementById('confirm-event-name').textContent;
+    updateConfirmBar(eventName, 'sent_for_review');
+    toast('📤 Panel sent for review', 'success');
+
+    const evPage = document.getElementById('page-events');
+    if (evPage && evPage.classList.contains('active')) loadEvents();
+
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '📤 Send for Review';
+  }
+}
+
+// ── Judge History & Correlations ──────────────────────────────────────────
+
+let _corrData = { correlations: [], scraped_competitions: [] };
+
+async function loadCorrelations() {
+  try {
+    const res = await fetch('/api/correlations');
+    if (!res.ok) return;
+    _corrData = await res.json();
+    renderScrapedComps();
+    renderCorrelationTable();
+  } catch (e) { /* server may not be running */ }
+}
+
+async function scrapeCompetition() {
+  const slug = document.getElementById('hist-slug').value.trim();
+  if (!slug) { toast('Please enter a competition slug', 'warning'); return; }
+
+  const btn = document.getElementById('btn-scrape');
+  const resultEl = document.getElementById('hist-scrape-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scraping…';
+  resultEl.innerHTML = '<div style="color:var(--gray-500);font-size:0.85rem">Fetching from worlddancesport.org…</div>';
+
+  try {
+    const res = await fetch('/api/correlations/scrape', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ slug })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      resultEl.innerHTML = `
+        <div style="background:#d1fae5;border:1px solid #6ee7b7;padding:0.75rem;border-radius:8px;font-size:0.85rem">
+          ✅ <strong>Scraped successfully!</strong><br>
+          Judges: ${data.n_judges} &nbsp;|&nbsp; Couples: ${data.n_couples} &nbsp;|&nbsp;
+          Rounds: ${data.n_rounds} &nbsp;|&nbsp; Marks stored: ${data.n_marks_stored}
+        </div>`;
+      toast(`Scraped ${slug}`, 'success');
+      document.getElementById('hist-slug').value = '';
+      await loadCorrelations();
+    } else {
+      resultEl.innerHTML = `
+        <div style="background:#fee2e2;border:1px solid #fca5a5;padding:0.75rem;border-radius:8px;font-size:0.85rem">
+          ❌ <strong>Error:</strong> ${data.error || 'Unknown error'}
+        </div>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = `<div style="color:#dc2626;font-size:0.85rem">Network error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📥 Scrape Marks';
+  }
+}
+
+// ── Panel Diversity Analyzer ──────────────────────────────────────────────────
+let _diversityJudges = [];
+
+function _refreshDiversityJudgeList() {
+  // Populate autocomplete from known judges in DB
+  fetch('/api/correlations?discipline=' + (document.getElementById('div-discipline')?.value || ''))
+    .then(r => r.json()).then(data => {
+      const names = new Set();
+      (data.correlations || []).forEach(p => { names.add(p.judge_name_a); names.add(p.judge_name_b); });
+      const dl = document.getElementById('div-judge-suggestions');
+      if (dl) { dl.innerHTML = [...names].sort().map(n => `<option value="${n}">`).join(''); }
+    }).catch(() => {});
+}
+
+function _renderDiversityTags() {
+  const container = document.getElementById('div-judge-tags');
+  const countEl   = document.getElementById('div-judge-count');
+  if (!container) return;
+  if (_diversityJudges.length === 0) {
+    container.innerHTML = '<span style="color:var(--gray-400);font-size:0.82rem;align-self:center">No judges added yet</span>';
+  } else {
+    container.innerHTML = _diversityJudges.map((name, i) => `
+      <span style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.25rem 0.6rem;
+        background:#e9f0ff;color:#2b4acb;border-radius:20px;font-size:0.82rem;font-weight:500">
+        ${name}
+        <span onclick="_removeDiversityJudge(${i})" style="cursor:pointer;font-size:0.9rem;opacity:0.6;margin-left:0.1rem">✕</span>
+      </span>`).join('');
+  }
+  if (countEl) countEl.textContent = _diversityJudges.length + ' judge' + (_diversityJudges.length !== 1 ? 's' : '');
+}
+
+function addDiversityJudge() {
+  const input = document.getElementById('div-judge-input');
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) return;
+  if (_diversityJudges.includes(name)) { input.value = ''; return; }
+  _diversityJudges.push(name);
+  input.value = '';
+  _renderDiversityTags();
+}
+
+function _removeDiversityJudge(idx) {
+  _diversityJudges.splice(idx, 1);
+  _renderDiversityTags();
+}
+
+function clearDiversityPanel() {
+  _diversityJudges = [];
+  _renderDiversityTags();
+  const r = document.getElementById('div-result');
+  if (r) r.style.display = 'none';
+}
+
+async function analyzePanelDiversity() {
+  if (_diversityJudges.length < 2) {
+    alert('Add at least 2 judges to analyze the panel.');
+    return;
+  }
+  const btn  = document.getElementById('btn-diversity');
+  const disc = document.getElementById('div-discipline')?.value || '';
+  btn.disabled = true; btn.textContent = '⏳ Analyzing…';
+
+  try {
+    const res  = await fetch('/api/panel-diversity', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({judges: _diversityJudges, discipline: disc})
+    });
+    const data = await res.json();
+
+    const resultEl = document.getElementById('div-result');
+    if (!data.ok) { alert(data.error || 'Error'); return; }
+
+    // Score box
+    const score    = data.diversity_score;
+    const ratingColors = {excellent:'#22543d,#c6f6d5', good:'#2a4365,#bee3f8', caution:'#744210,#fefcbf', poor:'#742a2a,#fed7d7', unknown:'#4a5568,#e2e8f0'};
+    const [fc, bg] = (ratingColors[data.rating] || ratingColors.unknown).split(',');
+    const ratingLabels = {excellent:'✅ Excellent', good:'👍 Good', caution:'⚠️ Caution', poor:'🚨 Poor diversity', unknown:'❓ Insufficient data'};
+
+    document.getElementById('div-score-box').style.cssText += `;background:${bg};color:${fc}`;
+    document.getElementById('div-score-num').textContent   = score !== null ? score + '%' : '—';
+    document.getElementById('div-score-label').textContent = 'Diversity Score';
+    document.getElementById('div-score-rating').textContent = ratingLabels[data.rating] || '';
+
+    document.getElementById('div-avg-corr').innerHTML =
+      `<strong>Avg. correlation:</strong> ${data.avg_correlation !== null ? data.avg_correlation.toFixed(3) : 'n/a'}`;
+    document.getElementById('div-coverage').textContent =
+      `${data.n_pairs_known} of ${data.n_pairs_total} pairs have historical data`;
+
+    const wp = data.worst_pair;
+    const bp = data.best_pair;
+    document.getElementById('div-worst').innerHTML = wp
+      ? `⚠️ <strong>Most similar:</strong> ${wp.judge_a} & ${wp.judge_b} (r = ${wp.correlation.toFixed(3)}, ${wp.n_competitions} comps)`
+      : '';
+    document.getElementById('div-best').innerHTML = bp
+      ? `✅ <strong>Most diverse:</strong> ${bp.judge_a} & ${bp.judge_b} (r = ${bp.correlation !== null ? bp.correlation.toFixed(3) : 'n/a'}, ${bp.n_competitions} comps)`
+      : '';
+
+    // Pair table
+    const corrColor = r => {
+      if (r === null) return '#888';
+      if (r >= 0.7)  return '#e53e3e';
+      if (r >= 0.4)  return '#d69e2e';
+      if (r <= -0.2) return '#276749';
+      return '#2d3748';
+    };
+    const corrBg = r => {
+      if (r === null) return '#f7fafc';
+      if (r >= 0.7)  return '#fff5f5';
+      if (r >= 0.4)  return '#fffff0';
+      if (r <= -0.2) return '#f0fff4';
+      return '#fff';
+    };
+    document.getElementById('div-pair-table').innerHTML = `
+      <table class="table">
+        <thead><tr>
+          <th>Judge A</th><th>Judge B</th>
+          <th style="text-align:center">Correlation</th>
+          <th style="text-align:center">Competitions</th>
+          <th style="text-align:center">Signal</th>
+        </tr></thead>
+        <tbody>${data.pairs.map(p => `
+          <tr style="background:${corrBg(p.correlation)}">
+            <td>${p.judge_a}</td>
+            <td>${p.judge_b}</td>
+            <td style="text-align:center;font-weight:700;color:${corrColor(p.correlation)}">
+              ${p.correlation !== null ? p.correlation.toFixed(3) : '<span style="color:#aaa">no data</span>'}
+            </td>
+            <td style="text-align:center">${p.n_competitions || '—'}</td>
+            <td style="text-align:center">
+              ${p.correlation === null ? '❓' :
+                p.correlation >= 0.7 ? '🚨 Too similar' :
+                p.correlation >= 0.4 ? '⚠️ Similar' :
+                p.correlation <= -0.2 ? '✅ Diverse' : '✔️ OK'}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    resultEl.style.display = 'block';
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 Analyze Panel';
+  }
+}
+
+// Init autocomplete when tab opens
+document.addEventListener('DOMContentLoaded', () => {
+  const discSel = document.getElementById('div-discipline');
+  if (discSel) { discSel.addEventListener('change', _refreshDiversityJudgeList); _refreshDiversityJudgeList(); }
+});
+
+
+async function rescrapeAll() {
+  const btn = document.getElementById('btn-rescrape-all');
+  const resultEl = document.getElementById('rescrape-all-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Re-scraping… (may take a few minutes)';
+  resultEl.innerHTML = '<div style="color:var(--gray-500);font-size:0.85rem">Fetching all competitions from worlddancesport.org — please wait…</div>';
+
+  try {
+    const res = await fetch('/api/correlations/rescrape-all', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.finished) {
+      const errMsg = data.errors && data.errors.length
+        ? `<br><span style="color:#dc2626">${data.errors.length} errors</span>`
+        : '';
+      resultEl.innerHTML = `
+        <div style="background:#d1fae5;border:1px solid #6ee7b7;padding:0.75rem;border-radius:8px;font-size:0.85rem">
+          ✅ <strong>Re-scrape complete!</strong><br>
+          ${data.done}/${data.total} competitions re-scraped &nbsp;|&nbsp;
+          ${data.withFinal} with final-round data &nbsp;|&nbsp;
+          ${data.pairs} judge pairs computed ${errMsg}
+        </div>`;
+      toast(`Re-scraped ${data.done} competitions — ${data.withFinal} with finals`, 'success');
+      await loadCorrelations();
+    } else {
+      resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #fca5a5;padding:0.75rem;border-radius:8px;font-size:0.85rem">❌ ${data.error || JSON.stringify(data)}</div>`;
+    }
+  } catch (e) {
+    resultEl.innerHTML = `<div style="color:#dc2626;font-size:0.85rem">Network error: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Re-scrape All Competitions';
+  }
+}
+
+async function computeCorrelations() {
+  const btn = document.getElementById('btn-compute');
+  const resultEl = document.getElementById('hist-compute-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Computing…';
+  resultEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/correlations/compute', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      resultEl.textContent = `✅ ${data.pairs_computed} pairs computed`;
+      toast(`Correlations updated — ${data.pairs_computed} judge pairs`, 'success');
+      await loadCorrelations();
+    } else {
+      resultEl.textContent = `❌ ${data.error || 'Error'}`;
+    }
+  } catch (e) {
+    resultEl.textContent = `Network error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔬 Compute / Update Correlations';
+  }
+}
+
+function renderScrapedComps() {
+  const comps = _corrData.scraped_competitions || [];
+  document.getElementById('hist-n-comps').textContent = comps.length;
+  const el = document.getElementById('hist-comps-list');
+  if (!comps.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-500)">No competitions scraped yet</div>';
+    return;
+  }
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>Competition Slug</th><th>Date</th><th>Discipline</th>
+      <th>Judges</th><th>Rounds</th><th>Couples</th><th>Scraped</th>
+    </tr></thead>
+    <tbody>${comps.map(c => `<tr>
+      <td style="font-family:monospace;font-size:0.8rem">${c.slug}</td>
+      <td>${c.competition_date || '—'}</td>
+      <td>${c.discipline || '—'}</td>
+      <td>${c.n_judges ?? '—'}</td>
+      <td>${c.n_rounds ?? '—'}</td>
+      <td>${c.n_couples ?? '—'}</td>
+      <td style="font-size:0.75rem;color:var(--gray-500)">${(c.scraped_at||'').slice(0,10)}</td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderCorrelationTable() {
+  const corrs = _corrData.correlations || [];
+  const filter = (document.getElementById('hist-filter')?.value || '').toLowerCase();
+  const onlyHigh = document.getElementById('hist-only-high')?.checked;
+
+  let filtered = corrs.filter(c => {
+    if (filter && !c.judge_name_a.toLowerCase().includes(filter) && !c.judge_name_b.toLowerCase().includes(filter)) return false;
+    if (onlyHigh && c.correlation <= 0.5) return false;
+    return true;
+  });
+
+  // Sort by correlation descending
+  filtered.sort((a, b) => b.correlation - a.correlation);
+
+  document.getElementById('hist-n-pairs').textContent = corrs.length;
+  const el = document.getElementById('hist-corr-table');
+  if (!filtered.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-500)">No pairs match your filter</div>';
+    return;
+  }
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>Judge A</th><th>Judge B</th>
+      <th>Discipline</th>
+      <th>Correlation (r)</th><th>Competitions</th><th>Data points</th><th>Risk</th>
+    </tr></thead>
+    <tbody>${filtered.slice(0,200).map(c => {
+      const r = c.correlation;
+      const col = r > 0.7 ? '#dc2626' : r > 0.3 ? '#d97706' : '#059669';
+      const risk = r > 0.7 ? '🔴 High — avoid together' : r > 0.3 ? '🟡 Medium' : '🟢 Independent';
+      const bar = Math.round(Math.abs(r) * 100);
+      const barDir = r >= 0 ? '#ef4444' : '#3b82f6';
+      const disc = c.discipline || '';
+      const discBadge = disc === 'Standard'
+        ? `<span class="disc-badge disc-Standard">🎩 Standard</span>`
+        : disc === 'Latin'
+          ? `<span class="disc-badge disc-Latin">💃 Latin</span>`
+          : `<span style="color:var(--gray-400);font-size:0.8rem">—</span>`;
+      const qa = encodeURIComponent(c.judge_name_a), qb = encodeURIComponent(c.judge_name_b), qd = encodeURIComponent(disc);
+      return `<tr style="cursor:pointer" title="Click to see evidence" onclick="showPairDetail('${c.judge_name_a.replace(/'/g,"\\'")}','${c.judge_name_b.replace(/'/g,"\\'")}','${disc}')">
+        <td>${c.judge_name_a}</td>
+        <td>${c.judge_name_b}</td>
+        <td>${discBadge}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div style="width:60px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+              <div style="width:${bar}%;height:100%;background:${barDir};border-radius:4px"></div>
+            </div>
+            <span style="font-weight:700;color:${col}">${r >= 0 ? '+' : ''}${r.toFixed(3)}</span>
+          </div>
+        </td>
+        <td style="text-align:center">${c.n_competitions}</td>
+        <td style="text-align:center">${c.n_data_points}</td>
+        <td style="font-size:0.8rem">${risk}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadDashboard();
+
+// ── Pair Detail Modal ──────────────────────────────────────────────────────
+function closePairModal() {
+  const m = document.getElementById('pair-detail-modal');
+  if (m) m.remove();
+}
+
+async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
+  // Remove existing modal if any
+  closePairModal();
+
+  // Show loading modal
+  const overlay = document.createElement('div');
+  overlay.id = 'pair-detail-modal';
+  overlay.className = 'pair-modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>🔍 ${judgeA} &nbsp;vs&nbsp; ${judgeB}</h2>
+        <button class="modal-close" onclick="closePairModal()">×</button>
+      </div>
+      <div class="modal-body" style="text-align:center;padding:3rem;color:var(--gray-500)">
+        <span class="spinner"></span> Loading evidence…
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) closePairModal(); });
+  document.body.appendChild(overlay);
+
+  try {
+    const params = new URLSearchParams({ judge_a: judgeA, judge_b: judgeB, finals_only: finalsOnly ? '1' : '0' });
+    if (discipline) params.set('discipline', discipline);
+    const data = await fetch(`/api/correlations/pair-detail?${params}`).then(r => r.json());
+
+    if (data.error) throw new Error(data.error);
+
+    const discBadge = d => d === 'Standard'
+      ? `<span class="disc-badge disc-Standard">🎩 Standard</span>`
+      : d === 'Latin'
+        ? `<span class="disc-badge disc-Latin">💃 Latin</span>`
+        : `<span style="color:#6b7280">${d}</span>`;
+
+    const corrColor = r => r === null ? '#6b7280' : r > 0.7 ? '#dc2626' : r > 0.3 ? '#d97706' : '#059669';
+
+    const toggleLabel = finalsOnly ? 'Show all rounds' : 'Finals only';
+    const toggleFn = `showPairDetail('${judgeA.replace(/'/g,"\\'")}','${judgeB.replace(/'/g,"\\'")}','${discipline}',${!finalsOnly})`;
+
+    if (!data.competitions.length) {
+      overlay.querySelector('.modal-body').innerHTML = `
+        <div class="alert alert-info">No shared finals found with enough data (min. 4 couples).</div>
+        <div style="margin-top:0.5rem">
+          <button class="btn btn-outline btn-sm" onclick="${toggleFn}" style="font-size:0.8rem">
+            🔄 ${toggleLabel}
+          </button>
+        </div>`;
+      return;
+    }
+
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <p style="margin:0;font-size:0.875rem;color:#6b7280">
+          <strong>${data.n_competitions}</strong> shared final${data.n_competitions !== 1 ? 's' : ''} ·
+          ${finalsOnly ? '🏆 Finals only' : '📋 All rounds'} ·
+          Green = same vote, red = different vote
+        </p>
+        <button class="btn btn-outline" onclick="${toggleFn}" style="font-size:0.8rem;padding:0.3rem 0.8rem">
+          🔄 ${toggleLabel}
+        </button>
+      </div>`;
+
+    for (const comp of data.competitions) {
+      const r = comp.correlation;
+      const col = corrColor(r);
+      const rLabel = r !== null ? `r = <strong style="color:${col}">${r >= 0 ? '+' : ''}${r.toFixed(3)}</strong>` : '—';
+
+      const cellsHtml = comp.couples.map(c => {
+        const agree = c.marks_a === c.marks_b;
+        return `<div class="couple-cell ${agree ? 'agree' : 'disagree'}">
+          <div class="couple-num">#${c.couple}</div>
+          <div class="marks">${c.marks_a} / ${c.marks_b}</div>
+        </div>`;
+      }).join('');
+
+      // Slug → readable name
+      const slugParts = comp.slug.replace(/-\d+$/, '').replace(/-/g, ' ');
+
+      html += `
+        <div class="comp-block">
+          <div class="comp-block-header">
+            <strong>${slugParts}</strong>
+            ${discBadge(comp.discipline)}
+            <span style="color:#6b7280">${finalsOnly ? '🏆 Final' : `Round ${comp.round}`}</span>
+            <span>${rLabel} &nbsp;·&nbsp; ${comp.n_couples} couples</span>
+          </div>
+          <div style="padding:0.5rem 1rem 0.25rem;font-size:0.72rem;color:#9ca3af">
+            ${judgeA} marks / ${judgeB} marks per couple
+          </div>
+          <div class="couples-grid">${cellsHtml}</div>
+        </div>`;
+    }
+
+    overlay.querySelector('.modal-body').innerHTML = html;
+  } catch(e) {
+    overlay.querySelector('.modal-body').innerHTML =
+      `<div class="alert alert-error">Error: ${e.message}</div>`;
+  }
+}
+</script>
+</body>
+</html>

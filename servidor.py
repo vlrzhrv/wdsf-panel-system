@@ -199,7 +199,20 @@ RANKING_STD_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 RANKING_LAT_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 
 def get_ranking_for_region(discipline, region):
-    """Return ranking list filtered/adapted for the championship region."""
+    """Return ranking list filtered/adapted for the championship region.
+    Prioriza datos de la tabla country_rankings en la BD si existen;
+    si no, usa los rankings hardcodeados como fallback."""
+    if "Standard" in discipline:
+        disc_key = "Standard"
+    elif "Latin" in discipline:
+        disc_key = "Latin"
+    else:
+        disc_key = "Ten Dance"
+
+    db_key = (disc_key, region)
+    if _DB_RANKINGS and db_key in _DB_RANKINGS:
+        return _DB_RANKINGS[db_key]
+
     if region == "Asia":
         return RANKING_STD_ASIA if "Standard" in discipline else RANKING_LAT_ASIA
     if region == "Americas":
@@ -209,19 +222,76 @@ def get_ranking_for_region(discipline, region):
     if region == "Europe":
         base = RANKING_STD if "Standard" in discipline else (RANKING_LAT if "Latin" in discipline else RANKING_TEN)
         return [c for c in base if ZONES.get(c,"") in EUROPEAN_ZONES]
-    # World / default
-    if "Latin" in discipline:   return RANKING_LAT
+    if "Latin" in discipline:    return RANKING_LAT
     if "Standard" in discipline: return RANKING_STD
     return RANKING_TEN
 
-def get_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Crea tablas nuevas si no existen (seguro ejecutar en cada arranque)."""
+    """Crea/migra TODAS las tablas. Seguro ejecutar en cada arranque.
+    Garantiza que un deploy en Railway con volumen vacio arranca sin errores."""
     conn = get_db()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judges (
+            id                                INTEGER PRIMARY KEY AUTOINCREMENT,
+            wdsf_min                          INTEGER UNIQUE,
+            first_name                        TEXT,
+            last_name                         TEXT,
+            nationality                       TEXT,
+            representing                      TEXT,
+            license_type                      TEXT,
+            license_valid_until               TEXT,
+            disciplines                       TEXT,
+            judging_world_championships       INTEGER DEFAULT 0,
+            judging_grand_slams               INTEGER DEFAULT 0,
+            judging_continental_championships INTEGER DEFAULT 0,
+            active                            INTEGER DEFAULT 1,
+            notes                             TEXT,
+            career_level                      TEXT DEFAULT 'national',
+            zone                              TEXT,
+            std_panels_count                  INTEGER DEFAULT 0,
+            lat_panels_count                  INTEGER DEFAULT 0,
+            specialty                         TEXT,
+            primary_discipline                TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT,
+            date        TEXT,
+            location    TEXT,
+            country     TEXT,
+            discipline  TEXT,
+            age_group   TEXT,
+            division    TEXT,
+            event_type  TEXT,
+            is_ags      INTEGER DEFAULT 0,
+            coefficient REAL DEFAULT 1.0,
+            status      TEXT DEFAULT 'pending',
+            wdsf_id     TEXT,
+            url         TEXT
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS panel_assignments (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id               INTEGER REFERENCES events(id),
+            judge_id               INTEGER REFERENCES judges(id),
+            role                   TEXT DEFAULT 'adjudicator',
+            position               INTEGER,
+            score                  REAL,
+            status                 TEXT DEFAULT 'proposed',
+            competition_identifier TEXT
+        )
+    """)
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS official_nominations (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -236,20 +306,111 @@ def init_db():
             judge_id          INTEGER REFERENCES judges(id),
             role              TEXT,
             status            TEXT,
-            section           TEXT,  -- 'adjudicator' | 'nominated'
-            position          TEXT,  -- letra A-I si es adjudicador confirmado
+            section           TEXT,
+            position          TEXT,
             synced_at         TEXT,
             UNIQUE(wdsf_comp_id, judge_name, section)
         )
     """)
-    # Añadir primary_discipline si no existe (migracion segura)
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(judges)").fetchall()]
-    if "primary_discipline" not in cols:
-        conn.execute("ALTER TABLE judges ADD COLUMN primary_discipline TEXT")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_marks_history (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            competition_slug TEXT NOT NULL,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            round_num        INTEGER,
+            judge_letter     TEXT,
+            judge_name       TEXT,
+            judge_country    TEXT,
+            couple_num       TEXT,
+            marks_count      INTEGER,
+            scraped_at       TEXT,
+            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS scraped_competitions (
+            slug             TEXT PRIMARY KEY,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            n_rounds         INTEGER,
+            n_judges         INTEGER,
+            n_couples        INTEGER,
+            scraped_at       TEXT
+        )
+    """)
+
+    existing_corr_cols = [r[1] for r in conn.execute(
+        "PRAGMA table_info(judge_pair_correlations)"
+    ).fetchall()]
+    if existing_corr_cols and "discipline" not in existing_corr_cols:
+        conn.execute("DROP TABLE judge_pair_correlations")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
+            judge_name_a      TEXT NOT NULL,
+            judge_name_b      TEXT NOT NULL,
+            discipline        TEXT NOT NULL DEFAULT 'Unknown',
+            correlation       REAL,
+            n_competitions    INTEGER,
+            n_data_points     INTEGER,
+            last_updated      TEXT,
+            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS country_rankings (
+            discipline  TEXT NOT NULL,
+            region      TEXT NOT NULL,
+            rank_order  INTEGER NOT NULL,
+            country     TEXT NOT NULL,
+            PRIMARY KEY (discipline, region, rank_order)
+        )
+    """)
+
+    def _add_col(table, col, col_def):
+        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
+
+    _add_col("judges", "primary_discipline",  "TEXT")
+    _add_col("judges", "std_panels_count",    "INTEGER DEFAULT 0")
+    _add_col("judges", "lat_panels_count",    "INTEGER DEFAULT 0")
+    _add_col("judges", "specialty",           "TEXT")
+    _add_col("events", "wdsf_id",             "TEXT")
+    _add_col("events", "url",                 "TEXT")
+    _add_col("panel_assignments", "competition_identifier", "TEXT")
+
     conn.commit()
     conn.close()
 
 init_db()
+
+
+def _load_rankings_from_db():
+    """Lee rankings de la BD. Si hay datos, los devuelve; si no, {} para usar hardcodeados."""
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT discipline, region, country FROM country_rankings ORDER BY discipline, region, rank_order"
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return {}
+        result = {}
+        for r in rows:
+            key = (r["discipline"], r["region"])
+            result.setdefault(key, []).append(r["country"])
+        return result
+    except Exception:
+        return {}
+
+_DB_RANKINGS = _load_rankings_from_db()
 
 def judge_dict(row):
     d = dict(row)
@@ -465,14 +626,62 @@ def calc_score(j, event, assigned_zones, return_breakdown=False,
 
 @app.route("/api/wdsf/<path:endpoint>")
 def wdsf_proxy(endpoint):
-    """Proxy calls to WDSF API with credentials."""
+    """Proxy WDSF API. Para /competition aplica filtrado server-side porque
+    la API v1 ignora status/discipline/take."""
     try:
         params = dict(request.args)
-        url = f"{WDSF_BASE}/{endpoint}"
+
+        if endpoint.lower() in ("competition", "competition/"):
+            today = date.today().isoformat()
+            req_status     = params.pop("status",     None)
+            req_discipline = params.pop("discipline", None)
+            req_take       = params.pop("take",       None)
+
+            if req_status == "Upcoming":
+                params.setdefault("from", today)
+            elif req_status == "Closed":
+                params.setdefault("to", today)
+                params["status"] = "Closed"
+
+            url  = f"{WDSF_BASE}/competition"
+            resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
+                                params=params, timeout=20,
+                                headers={"Accept": "application/json"})
+            try:
+                data = resp.json()
+            except Exception:
+                return jsonify({"status": resp.status_code, "raw": resp.text[:2000]}), 200
+
+            if not isinstance(data, list):
+                return jsonify(data), resp.status_code
+
+            if req_status == "Upcoming":
+                def _comp_date(c):
+                    parts = c.get("name","").rsplit(" - ", 1)
+                    if len(parts) == 2:
+                        return parts[1].strip().replace("/", "-")
+                    return ""
+                data = [c for c in data if _comp_date(c) >= today]
+
+            if req_discipline:
+                disc_upper = req_discipline.upper()
+                disc_keywords = {
+                    "LAT": ["LATIN"], "STD": ["STANDARD"],
+                    "TEN": ["TEN DANCE", "10 DANCE"],
+                }.get(disc_upper, [disc_upper])
+                data = [c for c in data
+                        if any(kw in c.get("name","").upper() for kw in disc_keywords)]
+
+            if req_take:
+                try: data = data[:int(req_take)]
+                except (ValueError, TypeError): pass
+
+            return jsonify(data), resp.status_code
+
+        url  = f"{WDSF_BASE}/{endpoint}"
         resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
                             params=params, timeout=15,
                             headers={"Accept": "application/json"})
-        # Return raw text + status for debugging when JSON fails
         try:
             return jsonify(resp.json()), resp.status_code
         except Exception:
@@ -480,8 +689,7 @@ def wdsf_proxy(endpoint):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-_AGE_GROUP_SLUG = {
+ = {
     "ADULT":        "Adult",
     "JUNIOR I":     "Junior-I",
     "JUNIOR II":    "Junior-II",
@@ -2015,9 +2223,6 @@ def nominations():
 def nominations_committed():
     """IDs de jueces en paneles confirmados EN WDSF (adjudicadores ya asignados)."""
     conn = get_db()
-    conn.execute("""CREATE TABLE IF NOT EXISTS official_nominations (
-        id INTEGER PRIMARY KEY, wdsf_comp_id INTEGER, judge_id INTEGER,
-        section TEXT, status TEXT, UNIQUE(wdsf_comp_id, judge_id, section))""")
     rows = conn.execute("""
         SELECT DISTINCT judge_id FROM official_nominations
         WHERE section='adjudicator' AND judge_id IS NOT NULL
@@ -2028,61 +2233,7 @@ def nominations_committed():
 
 # ─── Judge Correlation Analysis ───────────────────────────────────────────────
 
-def _init_correlation_tables():
-    """Create tables for judge historical correlation analysis."""
-    conn = get_db()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_marks_history (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            competition_slug TEXT NOT NULL,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            round_num        INTEGER,
-            judge_letter     TEXT,
-            judge_name       TEXT,
-            judge_country    TEXT,
-            couple_num       TEXT,
-            marks_count      INTEGER,
-            scraped_at       TEXT,
-            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS scraped_competitions (
-            slug             TEXT PRIMARY KEY,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            n_rounds         INTEGER,
-            n_judges         INTEGER,
-            n_couples        INTEGER,
-            scraped_at       TEXT
-        )
-    """)
-    # Migrate: drop old table if it lacks the discipline column
-    existing_cols = [row[1] for row in conn.execute(
-        "PRAGMA table_info(judge_pair_correlations)"
-    ).fetchall()]
-    if existing_cols and "discipline" not in existing_cols:
-        conn.execute("DROP TABLE judge_pair_correlations")
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
-            judge_name_a      TEXT NOT NULL,
-            judge_name_b      TEXT NOT NULL,
-            discipline        TEXT NOT NULL DEFAULT 'Unknown',
-            correlation       REAL,
-            n_competitions    INTEGER,
-            n_data_points     INTEGER,
-            last_updated      TEXT,
-            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-_init_correlation_tables()
+# (tabla de correlaciones gestionada en init_db())
 
 
 def _rank_with_ties(lst):

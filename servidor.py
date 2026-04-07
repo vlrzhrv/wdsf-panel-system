@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 import sqlite3, os, requests, shutil
+from requests.auth import HTTPBasicAuth
 from datetime import date
 
 # ── Directorio raíz de la app (donde está este archivo) ──────────────────────
@@ -46,7 +47,8 @@ def require_password():
         )
 
 # ── WDSF API credentials ──────────────────────────────────────────────────────
-WDSF_TOKEN = os.environ.get("WDSF_TOKEN", "")
+WDSF_USER = os.environ.get("WDSF_USER", "")
+WDSF_PASS = os.environ.get("WDSF_PASS", "")
 WDSF_BASE = "https://services.worlddancesport.org/api/1"
 
 # Country name normalization (WDSF API names → standard names)
@@ -467,9 +469,9 @@ def wdsf_proxy(endpoint):
     try:
         params = dict(request.args)
         url = f"{WDSF_BASE}/{endpoint}"
-        resp = requests.get(url, params=params, timeout=15,
-                            headers={"Accept": "application/json",
-                                     "X-WDSF-API-KEY": WDSF_TOKEN})
+        resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
+                            params=params, timeout=15,
+                            headers={"Accept": "application/json"})
         # Return raw text + status for debugging when JSON fails
         try:
             return jsonify(resp.json()), resp.status_code
@@ -569,8 +571,8 @@ def list_wdsf_competitions():
     year = int(data.get("year", 2026))
 
     api_session = requests.Session()
-    api_session.headers.update({"Accept": "application/json",
-                                 "X-WDSF-API-KEY": WDSF_TOKEN})
+    api_session.auth = HTTPBasicAuth(WDSF_USER, WDSF_PASS)
+    api_session.headers.update({"Accept": "application/json"})
 
     conn = get_db()
     already_scraped = {r["slug"] for r in

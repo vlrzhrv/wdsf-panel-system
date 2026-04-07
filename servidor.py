@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 import sqlite3, os, requests, shutil
-from requests.auth import HTTPBasicAuth
 from datetime import date
 
 # ── Directorio raíz de la app (donde está este archivo) ──────────────────────
@@ -47,8 +46,7 @@ def require_password():
         )
 
 # ── WDSF API credentials ──────────────────────────────────────────────────────
-WDSF_USER = os.environ.get("WDSF_USER", "")
-WDSF_PASS = os.environ.get("WDSF_PASS", "")
+WDSF_TOKEN = os.environ.get("WDSF_TOKEN", "")
 WDSF_BASE = "https://services.worlddancesport.org/api/1"
 
 # Country name normalization (WDSF API names → standard names)
@@ -199,20 +197,7 @@ RANKING_STD_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 RANKING_LAT_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 
 def get_ranking_for_region(discipline, region):
-    """Return ranking list filtered/adapted for the championship region.
-    Prioriza datos de la tabla country_rankings en la BD si existen;
-    si no, usa los rankings hardcodeados como fallback."""
-    if "Standard" in discipline:
-        disc_key = "Standard"
-    elif "Latin" in discipline:
-        disc_key = "Latin"
-    else:
-        disc_key = "Ten Dance"
-
-    db_key = (disc_key, region)
-    if _DB_RANKINGS and db_key in _DB_RANKINGS:
-        return _DB_RANKINGS[db_key]
-
+    """Return ranking list filtered/adapted for the championship region."""
     if region == "Asia":
         return RANKING_STD_ASIA if "Standard" in discipline else RANKING_LAT_ASIA
     if region == "Americas":
@@ -222,7 +207,8 @@ def get_ranking_for_region(discipline, region):
     if region == "Europe":
         base = RANKING_STD if "Standard" in discipline else (RANKING_LAT if "Latin" in discipline else RANKING_TEN)
         return [c for c in base if ZONES.get(c,"") in EUROPEAN_ZONES]
-    if "Latin" in discipline:    return RANKING_LAT
+    # World / default
+    if "Latin" in discipline:   return RANKING_LAT
     if "Standard" in discipline: return RANKING_STD
     return RANKING_TEN
 
@@ -232,67 +218,8 @@ def get_db():
     return conn
 
 def init_db():
-    """Crea/migra TODAS las tablas. Seguro ejecutar en cada arranque.
-    Garantiza que un deploy en Railway con volumen vacio arranca sin errores."""
+    """Crea tablas nuevas si no existen (seguro ejecutar en cada arranque)."""
     conn = get_db()
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judges (
-            id                                INTEGER PRIMARY KEY AUTOINCREMENT,
-            wdsf_min                          INTEGER UNIQUE,
-            first_name                        TEXT,
-            last_name                         TEXT,
-            nationality                       TEXT,
-            representing                      TEXT,
-            license_type                      TEXT,
-            license_valid_until               TEXT,
-            disciplines                       TEXT,
-            judging_world_championships       INTEGER DEFAULT 0,
-            judging_grand_slams               INTEGER DEFAULT 0,
-            judging_continental_championships INTEGER DEFAULT 0,
-            active                            INTEGER DEFAULT 1,
-            notes                             TEXT,
-            career_level                      TEXT DEFAULT 'national',
-            zone                              TEXT,
-            std_panels_count                  INTEGER DEFAULT 0,
-            lat_panels_count                  INTEGER DEFAULT 0,
-            specialty                         TEXT,
-            primary_discipline                TEXT
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT,
-            date        TEXT,
-            location    TEXT,
-            country     TEXT,
-            discipline  TEXT,
-            age_group   TEXT,
-            division    TEXT,
-            event_type  TEXT,
-            is_ags      INTEGER DEFAULT 0,
-            coefficient REAL DEFAULT 1.0,
-            status      TEXT DEFAULT 'pending',
-            wdsf_id     TEXT,
-            url         TEXT
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS panel_assignments (
-            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id               INTEGER REFERENCES events(id),
-            judge_id               INTEGER REFERENCES judges(id),
-            role                   TEXT DEFAULT 'adjudicator',
-            position               INTEGER,
-            score                  REAL,
-            status                 TEXT DEFAULT 'proposed',
-            competition_identifier TEXT
-        )
-    """)
-
     conn.execute("""
         CREATE TABLE IF NOT EXISTS official_nominations (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -307,119 +234,20 @@ def init_db():
             judge_id          INTEGER REFERENCES judges(id),
             role              TEXT,
             status            TEXT,
-            section           TEXT,
-            position          TEXT,
+            section           TEXT,  -- 'adjudicator' | 'nominated'
+            position          TEXT,  -- letra A-I si es adjudicador confirmado
             synced_at         TEXT,
             UNIQUE(wdsf_comp_id, judge_name, section)
         )
     """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_marks_history (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            competition_slug TEXT NOT NULL,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            round_num        INTEGER,
-            judge_letter     TEXT,
-            judge_name       TEXT,
-            judge_country    TEXT,
-            couple_num       TEXT,
-            marks_count      INTEGER,
-            scraped_at       TEXT,
-            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS scraped_competitions (
-            slug             TEXT PRIMARY KEY,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            n_rounds         INTEGER,
-            n_judges         INTEGER,
-            n_couples        INTEGER,
-            scraped_at       TEXT
-        )
-    """)
-
-    existing_corr_cols = [r[1] for r in conn.execute(
-        "PRAGMA table_info(judge_pair_correlations)"
-    ).fetchall()]
-    if existing_corr_cols and "discipline" not in existing_corr_cols:
-        conn.execute("DROP TABLE judge_pair_correlations")
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
-            judge_name_a      TEXT NOT NULL,
-            judge_name_b      TEXT NOT NULL,
-            discipline        TEXT NOT NULL DEFAULT 'Unknown',
-            correlation       REAL,
-            n_competitions    INTEGER,
-            n_data_points     INTEGER,
-            last_updated      TEXT,
-            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS country_rankings (
-            discipline  TEXT NOT NULL,
-            region      TEXT NOT NULL,
-            rank_order  INTEGER NOT NULL,
-            country     TEXT NOT NULL,
-            PRIMARY KEY (discipline, region, rank_order)
-        )
-    """)
-
-    def _add_col(table, col, col_def):
-        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-        if col not in cols:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
-
-    _add_col("judges", "primary_discipline",  "TEXT")
-    _add_col("judges", "std_panels_count",    "INTEGER DEFAULT 0")
-    _add_col("judges", "lat_panels_count",    "INTEGER DEFAULT 0")
-    _add_col("judges", "specialty",           "TEXT")
-    _add_col("events", "wdsf_id",             "TEXT")
-    _add_col("events", "url",                 "TEXT")
-    _add_col("panel_assignments", "competition_identifier", "TEXT")
-
+    # Añadir primary_discipline si no existe (migracion segura)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(judges)").fetchall()]
+    if "primary_discipline" not in cols:
+        conn.execute("ALTER TABLE judges ADD COLUMN primary_discipline TEXT")
     conn.commit()
     conn.close()
 
 init_db()
-
-
-def _load_rankings_from_db():
-    """Lee rankings de la BD. Si hay datos, los devuelve; si no, {} para usar hardcodeados."""
-    try:
-        conn = get_db()
-        rows = conn.execute(
-            "SELECT discipline, region, country FROM country_rankings ORDER BY discipline, region, rank_order"
-        ).fetchall()
-        conn.close()
-        if not rows:
-            return {}
-        result = {}
-        for r in rows:
-            key = (r["discipline"], r["region"])
-            result.setdefault(key, []).append(r["country"])
-        return result
-    except Exception:
-        return {}
-
-_DB_RANKINGS = _load_rankings_from_db()
-
-# ── WDSF status sync state ──────────────────────────────────────────────
-from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _as_completed
-import threading as _threading
-_sync_state = {"running": False, "last_result": None}
-
-# ── Full judge sync state ────────────────────────────────────────────
-_judge_sync_state = {"running": False, "last_result": None, "log": []}
 
 def judge_dict(row):
     d = dict(row)
@@ -635,68 +463,21 @@ def calc_score(j, event, assigned_zones, return_breakdown=False,
 
 @app.route("/api/wdsf/<path:endpoint>")
 def wdsf_proxy(endpoint):
-    """Proxy WDSF API. Para /competition aplica filtrado server-side porque
-    la API v1 ignora status/discipline/take."""
+    """Proxy calls to WDSF API with credentials."""
     try:
         params = dict(request.args)
-
-        if endpoint.lower() in ("competition", "competition/"):
-            today = date.today().isoformat()
-            req_status     = params.pop("status",     None)
-            req_discipline = params.pop("discipline", None)
-            req_take       = params.pop("take",       None)
-
-            if req_status == "Upcoming":
-                params.setdefault("from", today)
-            elif req_status == "Closed":
-                params.setdefault("to", today)
-                params["status"] = "Closed"
-
-            url  = f"{WDSF_BASE}/competition"
-            resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                                params=params, timeout=20,
-                                headers={"Accept": "application/json"})
-            try:
-                data = resp.json()
-            except Exception:
-                return jsonify({"status": resp.status_code, "raw": resp.text[:2000]}), 200
-
-            if not isinstance(data, list):
-                return jsonify(data), resp.status_code
-
-            if req_status == "Upcoming":
-                def _comp_date(c):
-                    parts = c.get("name","").rsplit(" - ", 1)
-                    if len(parts) == 2:
-                        return parts[1].strip().replace("/", "-")
-                    return ""
-                data = [c for c in data if _comp_date(c) >= today]
-
-            if req_discipline:
-                disc_upper = req_discipline.upper()
-                disc_keywords = {
-                    "LAT": ["LATIN"], "STD": ["STANDARD"],
-                    "TEN": ["TEN DANCE", "10 DANCE"],
-                }.get(disc_upper, [disc_upper])
-                data = [c for c in data
-                        if any(kw in c.get("name","").upper() for kw in disc_keywords)]
-
-            if req_take:
-                try: data = data[:int(req_take)]
-                except (ValueError, TypeError): pass
-
-            return jsonify(data), resp.status_code
-
-        url  = f"{WDSF_BASE}/{endpoint}"
-        resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                            params=params, timeout=15,
-                            headers={"Accept": "application/json"})
+        url = f"{WDSF_BASE}/{endpoint}"
+        resp = requests.get(url, params=params, timeout=15,
+                            headers={"Accept": "application/json",
+                                     "Authorization": f"Bearer {WDSF_TOKEN}"})
+        # Return raw text + status for debugging when JSON fails
         try:
             return jsonify(resp.json()), resp.status_code
         except Exception:
             return jsonify({"status": resp.status_code, "raw": resp.text[:2000]}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 _AGE_GROUP_SLUG = {
     "ADULT":        "Adult",
@@ -788,8 +569,8 @@ def list_wdsf_competitions():
     year = int(data.get("year", 2026))
 
     api_session = requests.Session()
-    api_session.auth = HTTPBasicAuth(WDSF_USER, WDSF_PASS)
-    api_session.headers.update({"Accept": "application/json"})
+    api_session.headers.update({"Accept": "application/json",
+                                 "Authorization": f"Bearer {WDSF_TOKEN}"})
 
     conn = get_db()
     already_scraped = {r["slug"] for r in
@@ -1097,145 +878,6 @@ def judge(jid):
     return jsonify(judge_dict(row)) if row else (jsonify({"error":"Not found"}), 404)
 
 
-
-
-# ── WDSF status sync ────────────────────────────────────────────────────────────────────────
-
-def _run_wdsf_sync():
-    """Background thread: check WDSF API for each judge and update active status."""
-    _sync_state["running"] = True
-    try:
-        conn = get_db()
-        judges = conn.execute(
-            "SELECT id, wdsf_min, first_name, last_name, active FROM judges WHERE wdsf_min IS NOT NULL"
-        ).fetchall()
-        conn.close()
-
-        changed, errors, checked = [], [], 0
-        today = date.today().isoformat()
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        def _check_one(j):
-            try:
-                resp = requests.get(
-                    f"{WDSF_BASE}/adjudicator/{j['wdsf_min']}",
-                    auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                    timeout=10,
-                    headers={"Accept": "application/json"}
-                )
-                if resp.status_code != 200:
-                    return None, f"{j['first_name']} {j['last_name']}: HTTP {resp.status_code}"
-                data = resp.json()
-                lic_type  = (data.get("licenseType") or "").strip()
-                lic_valid = (data.get("licenseValidUntil") or "").strip()[:10]
-                should_active = bool(lic_type) and (not lic_valid or lic_valid >= today)
-                return {"j": j, "should_active": should_active,
-                        "lic_type": lic_type, "lic_valid": lic_valid}, None
-            except Exception as ex:
-                return None, f"{j['first_name']} {j['last_name']}: {str(ex)[:60]}"
-
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            futures = {pool.submit(_check_one, j): j for j in judges}
-            for future in as_completed(futures):
-                result, err = future.result()
-                if err:
-                    errors.append(err)
-                    continue
-                if result is None:
-                    continue
-                checked += 1
-                j, should_active = result["j"], result["should_active"]
-                lic_type, lic_valid = result["lic_type"], result["lic_valid"]
-                was_active = bool(j["active"])
-                if was_active != should_active:
-                    reason = "" if should_active else (
-                        f"WDSF sync {today}: lic={lic_type or 'none'}, valid_until={lic_valid or 'n/a'}"
-                    )
-                    c = get_db()
-                    c.execute("UPDATE judges SET active=?, notes=? WHERE id=?",
-                              (1 if should_active else 0, reason if not should_active else None, j["id"]))
-                    c.commit()
-                    c.close()
-                    changed.append({
-                        "name": f"{j['first_name']} {j['last_name']}",
-                        "was": "Active" if was_active else "Inactive",
-                        "now": "Active" if should_active else "Inactive",
-                        "reason": reason
-                    })
-
-        _sync_state["last_result"] = {
-            "checked": checked, "changed": changed,
-            "errors": errors[:20], "timestamp": today
-        }
-    except Exception as ex:
-        _sync_state["last_result"] = {"error": str(ex), "checked": 0, "changed": [], "errors": []}
-    finally:
-        _sync_state["running"] = False
-def post_sync_wdsf():
-    if _sync_state["running"]:
-        return jsonify({"status": "already_running"}), 202
-    _threading.Thread(target=_run_wdsf_sync, daemon=True).start()
-    return jsonify({"status": "started"}), 202
-
-@app.route("/api/judges/sync-wdsf-status", methods=["GET"])
-def get_sync_wdsf():
-    return jsonify({"running": _sync_state["running"], "last_result": _sync_state["last_result"]})
-
-# ââ Full judge sync (sincronizar_jueces.py) âââââââââââââââââââââââââââââââââââ
-
-def _run_judge_sync_background(years):
-    """Background thread: run comprehensive WDSF judge sync."""
-    _judge_sync_state["running"] = True
-    _judge_sync_state["log"] = []
-
-    def _log(msg, flush=False):
-        _judge_sync_state["log"].append(str(msg))
-        print(msg, flush=True)
-
-    try:
-        import importlib.util, sys as _sys
-        spec = importlib.util.spec_from_file_location(
-            "sincronizar_jueces",
-            os.path.join(APP_DIR, "sincronizar_jueces.py")
-        )
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-
-        result = mod.run_sync(years=years, db_path=DB, log=_log)
-        _judge_sync_state["last_result"] = result
-    except Exception as ex:
-        _judge_sync_state["last_result"] = {"error": str(ex)}
-        _log(f"ERROR: {ex}")
-    finally:
-        _judge_sync_state["running"] = False
-
-
-@app.route("/api/sync_judges", methods=["POST"])
-def post_sync_judges():
-    """Start a background full judge sync. POST body: {"years": [2025, 2026]}  (optional)"""
-    if _judge_sync_state["running"]:
-        return jsonify({"status": "already_running",
-                        "log": _judge_sync_state["log"][-20:]}), 202
-    body  = request.get_json(silent=True) or {}
-    from datetime import date as _date
-    today = _date.today()
-    years = body.get("years", [today.year - 1, today.year])
-    t = _threading.Thread(target=_run_judge_sync_background, args=(years,), daemon=True)
-    t.start()
-    return jsonify({"status": "started", "years": years}), 202
-
-
-@app.route("/api/sync_judges", methods=["GET"])
-def get_sync_judges():
-    """Poll sync progress."""
-    return jsonify({
-        "running":     _judge_sync_state["running"],
-        "last_result": _judge_sync_state["last_result"],
-        "log":         _judge_sync_state["log"][-50:],
-    })
-
-
 def _fetch_discipline_from_min(wdsf_min):
     """Given a WDSF MIN, fetch the athlete profile and return discipline + career level.
     Returns dict: {discipline, career_level} or None on failure.
@@ -1263,7 +905,7 @@ def _fetch_discipline_from_min(wdsf_min):
             return None
         athlete_url = "https://www.worlddancesport.org" + items[0]["url"]
 
-        # 2. Fetch athlete profile page (SSR â competitions embedded in HTML)
+        # 2. Fetch athlete profile page (SSR — competitions embedded in HTML)
         rp = requests.get(athlete_url, headers=HEADERS, timeout=15)
         rp.raise_for_status()
         soup = BeautifulSoup(rp.text, "html.parser")
@@ -1284,7 +926,7 @@ def _fetch_discipline_from_min(wdsf_min):
         )]
 
         if len(comp_rows) < 2:
-            # Not enough competition data â can't determine discipline
+            # Not enough competition data — can't determine discipline
             std_count = 0
             lat_count = 0
         else:
@@ -1292,7 +934,7 @@ def _fetch_discipline_from_min(wdsf_min):
             std_count = all_text.count("standard")
             lat_count  = all_text.count("latin")
 
-        # 4. Determine discipline â require meaningful signal (at least 3 occurrences total)
+        # 4. Determine discipline — require meaningful signal (at least 3 occurrences total)
         discipline = None
         total = std_count + lat_count
         if total >= 3:
@@ -1303,41 +945,41 @@ def _fetch_discipline_from_min(wdsf_min):
             else:
                 discipline = "10-Dance"
 
-        # 5. Determine career level â hierarchy:
+        # 5. Determine career level — hierarchy:
         #    Adult World/Continental > Professional World/Continental
         #    > Youth/Other World/Continental > World Open > Grand Slam
         #    Within each: Gold(1) > Silver(2) > Bronze(3) > Finalist(top6)
         best_level_score = 0
         LEVEL_MAP = [
             # (score, label)
-            # ââ Adult World Championship ââââââââââââââââââââââââââââââ
-            (1000, "world_champion_adult"),       # ð¥ rank 1
-            ( 950, "world_silver_adult"),          # ð¥ rank 2
-            ( 900, "world_bronze_adult"),          # ð¥ rank 3
-            ( 800, "world_finalist_adult"),        # ð top 6
+            # ── Adult World Championship ──────────────────────────────
+            (1000, "world_champion_adult"),       # 🥇 rank 1
+            ( 950, "world_silver_adult"),          # 🥈 rank 2
+            ( 900, "world_bronze_adult"),          # 🥉 rank 3
+            ( 800, "world_finalist_adult"),        # 🎖 top 6
             ( 750, "world_participant_adult"),     # top 12
-            # ââ Adult Continental Championship ââââââââââââââââââââââââ
-            ( 700, "continental_champion_adult"),  # ð¥ rank 1
-            ( 680, "continental_silver_adult"),    # ð¥ rank 2
-            ( 660, "continental_bronze_adult"),    # ð¥ rank 3
-            ( 600, "continental_finalist_adult"),  # ð top 6
-            # ââ Professional World Championship âââââââââââââââââââââââ
-            ( 550, "pro_world_champion"),          # ð¥ rank 1
-            ( 510, "pro_world_finalist"),          # ð top 6
-            # ââ Professional Continental Championship âââââââââââââââââ
-            ( 460, "pro_continental_champion"),    # ð¥ rank 1
-            ( 420, "pro_continental_finalist"),    # ð top 6
-            # ââ Youth/Junior/Senior/Other World Championship ââââââââââ
-            ( 370, "world_champion_youth"),        # ð¥ rank 1
-            ( 340, "world_silver_youth"),          # ð¥ rank 2
-            ( 320, "world_bronze_youth"),          # ð¥ rank 3
-            ( 290, "world_finalist_youth"),        # ð top 6
-            # ââ Youth/Other Continental Championship âââââââââââââââââ
-            ( 250, "continental_champion_youth"),  # ð¥ rank 1
-            ( 230, "continental_silver_youth"),    # ð¥ rank 2
-            ( 210, "continental_bronze_youth"),    # ð¥ rank 3
-            ( 190, "continental_finalist_youth"),  # ð top 6
-            # ââ Open competitions âââââââââââââââââââââââââââââââââââââ
+            # ── Adult Continental Championship ────────────────────────
+            ( 700, "continental_champion_adult"),  # 🥇 rank 1
+            ( 680, "continental_silver_adult"),    # 🥈 rank 2
+            ( 660, "continental_bronze_adult"),    # 🥉 rank 3
+            ( 600, "continental_finalist_adult"),  # 🎖 top 6
+            # ── Professional World Championship ───────────────────────
+            ( 550, "pro_world_champion"),          # 🥇 rank 1
+            ( 510, "pro_world_finalist"),          # 🎖 top 6
+            # ── Professional Continental Championship ─────────────────
+            ( 460, "pro_continental_champion"),    # 🥇 rank 1
+            ( 420, "pro_continental_finalist"),    # 🎖 top 6
+            # ── Youth/Junior/Senior/Other World Championship ──────────
+            ( 370, "world_champion_youth"),        # 🥇 rank 1
+            ( 340, "world_silver_youth"),          # 🥈 rank 2
+            ( 320, "world_bronze_youth"),          # 🥉 rank 3
+            ( 290, "world_finalist_youth"),        # 🎖 top 6
+            # ── Youth/Other Continental Championship ─────────────────
+            ( 250, "continental_champion_youth"),  # 🥇 rank 1
+            ( 230, "continental_silver_youth"),    # 🥈 rank 2
+            ( 210, "continental_bronze_youth"),    # 🥉 rank 3
+            ( 190, "continental_finalist_youth"),  # 🎖 top 6
+            # ── Open competitions ─────────────────────────────────────
             ( 150, "world_open_finalist"),         # top 8 at World Open
             ( 100, "grand_slam_finalist"),         # top 8 at Grand Slam
             (  10, "international"),               # competed internationally
@@ -2291,32 +1933,6 @@ def sync_nominations():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-@app.route("/api/debug_nominations")
-def debug_nominations():
-    """Debug: raw SQL para diagnosticar judge_id IS NULL."""
-    import sqlite3 as _sql
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT id, wdsf_comp_id, judge_name, judge_country, judge_id, section, synced_at "
-        "FROM official_nominations WHERE judge_id IS NULL ORDER BY synced_at"
-    ).fetchall()
-    result = []
-    for r in rows:
-        nm = r["judge_name"] or ""
-        cc = r["judge_country"] or ""
-        cf = {"CZE":"Czechia","DEN":"Denmark","GBR":"United Kingdom","SLO":"Slovenia","SRB":"Serbia","EST":"Estonia","ITA":"Italy","VIE":"Vietnam","CHN":"China, People's Republic of","MLT":"Malta","OIN":"AIN","KOR":"Korea","PHI":"Philippines","MGL":"Mongolia","ECU":"Ecuador"}.get(cc.strip().upper(), cc)
-        parts = nm.strip().split()
-        s1_count = 0
-        last_rows = []
-        if len(parts) >= 2:
-            ln, fn = parts[-1], parts[0]
-            s1_rows = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? AND (UPPER(representing)=? OR UPPER(nationality)=?)",(ln.upper(),fn.upper()+"%",cf.upper(),cf.upper())).fetchall()
-            s1_count = len(s1_rows)
-            last_rows = [x[0] for x in conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=?",(ln.upper(),)).fetchall()]
-        result.append({"id":r["id"],"name":repr(nm),"cc":repr(cc),"cf":cf,"s1_matches":s1_count,"lastname_ids":last_rows,"synced_at":r["synced_at"]})
-    conn.close()
-    return jsonify({"unmatched_count":len(result),"rows":result})
-
 @app.route("/api/ranking/<discipline>")
 def ranking_for_discipline(discipline):
     """Return the country ranking used for a given discipline."""
@@ -2397,6 +2013,9 @@ def nominations():
 def nominations_committed():
     """IDs de jueces en paneles confirmados EN WDSF (adjudicadores ya asignados)."""
     conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS official_nominations (
+        id INTEGER PRIMARY KEY, wdsf_comp_id INTEGER, judge_id INTEGER,
+        section TEXT, status TEXT, UNIQUE(wdsf_comp_id, judge_id, section))""")
     rows = conn.execute("""
         SELECT DISTINCT judge_id FROM official_nominations
         WHERE section='adjudicator' AND judge_id IS NOT NULL
@@ -2407,7 +2026,61 @@ def nominations_committed():
 
 # ─── Judge Correlation Analysis ───────────────────────────────────────────────
 
-# (tabla de correlaciones gestionada en init_db())
+def _init_correlation_tables():
+    """Create tables for judge historical correlation analysis."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_marks_history (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            competition_slug TEXT NOT NULL,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            round_num        INTEGER,
+            judge_letter     TEXT,
+            judge_name       TEXT,
+            judge_country    TEXT,
+            couple_num       TEXT,
+            marks_count      INTEGER,
+            scraped_at       TEXT,
+            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS scraped_competitions (
+            slug             TEXT PRIMARY KEY,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            n_rounds         INTEGER,
+            n_judges         INTEGER,
+            n_couples        INTEGER,
+            scraped_at       TEXT
+        )
+    """)
+    # Migrate: drop old table if it lacks the discipline column
+    existing_cols = [row[1] for row in conn.execute(
+        "PRAGMA table_info(judge_pair_correlations)"
+    ).fetchall()]
+    if existing_cols and "discipline" not in existing_cols:
+        conn.execute("DROP TABLE judge_pair_correlations")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
+            judge_name_a      TEXT NOT NULL,
+            judge_name_b      TEXT NOT NULL,
+            discipline        TEXT NOT NULL DEFAULT 'Unknown',
+            correlation       REAL,
+            n_competitions    INTEGER,
+            n_data_points     INTEGER,
+            last_updated      TEXT,
+            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_init_correlation_tables()
 
 
 def _rank_with_ties(lst):
@@ -4139,85 +3812,6 @@ def monday_sync():
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")
-
-# ── Startup: re-match any judge_id=NULL nominations (runs on every deploy) ───
-def _startup_fix_unmatched_nominations():
-    """At server start, re-try matching judge_id=NULL rows using full find_judge logic."""
-    _cmap = {
-        "FRA":"France","BEL":"Belgium","CZE":"Czechia","ESP":"Spain",
-        "POR":"Portugal","ITA":"Italy","AUT":"Austria","LTU":"Lithuania",
-        "ROU":"Romania","NOR":"Norway","GER":"Germany","POL":"Poland",
-        "DEN":"Denmark","GBR":"United Kingdom","NED":"Netherlands","HUN":"Hungary",
-        "SVK":"Slovakia","SLO":"Slovenia","CRO":"Croatia","BUL":"Bulgaria",
-        "LAT":"Latvia","EST":"Estonia","UKR":"Ukraine","RUS":"Russia",
-        "BLR":"Belarus","SWE":"Sweden","FIN":"Finland","SUI":"Switzerland",
-        "TUR":"Turkey","GRE":"Greece","SRB":"Serbia","MKD":"Macedonia",
-        "MDA":"Moldova","GEO":"Georgia","AZE":"Azerbaijan","ARM":"Armenia",
-        "CHN":"China, People's Republic of","JPN":"Japan","KOR":"Korea",
-        "AUS":"Australia","USA":"United States","CAN":"Canada","BRA":"Brazil",
-        "ARG":"Argentina","MEX":"Mexico","ISR":"Israel","VIE":"Vietnam",
-        "ECU":"Ecuador","MLT":"Malta","PHI":"Philippines","MGL":"Mongolia",
-        "OIN":"AIN","TPE":"Chinese Taipei","HKG":"Hong Kong","SGP":"Singapore",
-    }
-    try:
-        conn = get_db()
-        rows = conn.execute(
-            "SELECT id, judge_name, judge_country FROM official_nominations WHERE judge_id IS NULL"
-        ).fetchall()
-        fixed = 0
-        for row in rows:
-            nm  = (row["judge_name"]    or "").strip()
-            cc  = (row["judge_country"] or "").strip().upper()
-            cf  = _cmap.get(cc, cc)
-            parts = nm.split()
-            if len(parts) < 2:
-                continue
-            jid  = None
-            last, first = parts[-1], parts[0]
-            # Strategy 1: last/first + country
-            for ln, fn in [(last, first), (first, last)]:
-                r = conn.execute(
-                    "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ?"
-                    " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
-                    (ln.upper(), fn.upper()+"%", cf.upper(), cf.upper())
-                ).fetchall()
-                if len(r) == 1:
-                    jid = r[0]["id"]; break
-            # Strategy 2: compound last name (3+ tokens)
-            if not jid and len(parts) >= 3:
-                cln = " ".join(parts[1:])
-                for ln, fn in [(cln, first), (first, cln)]:
-                    r = conn.execute(
-                        "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ?"
-                        " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
-                        (ln.upper(), fn.upper()+"%", cf.upper(), cf.upper())
-                    ).fetchall()
-                    if len(r) == 1:
-                        jid = r[0]["id"]; break
-            # Strategy 3: last name unique in country
-            if not jid:
-                for ln in [last, first]:
-                    r = conn.execute(
-                        "SELECT id FROM judges WHERE UPPER(last_name)=?"
-                        " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
-                        (ln.upper(), cf.upper(), cf.upper())
-                    ).fetchall()
-                    if len(r) == 1:
-                        jid = r[0]["id"]; break
-            if jid:
-                conn.execute(
-                    "UPDATE official_nominations SET judge_id=? WHERE id=?", (jid, row["id"])
-                )
-                fixed += 1
-        if fixed:
-            conn.commit()
-            print(f"[startup] Nominations backfill: {fixed} judge_ids matched", flush=True)
-        conn.close()
-    except Exception as _e:
-        print(f"[startup] Nominations backfill error: {_e}", flush=True)
-
-_startup_fix_unmatched_nominations()
-
 
 if __name__ == "__main__":
     port     = int(os.environ.get("PORT", 5001))

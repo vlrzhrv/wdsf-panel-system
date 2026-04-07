@@ -469,7 +469,7 @@ def wdsf_proxy(endpoint):
         url = f"{WDSF_BASE}/{endpoint}"
         resp = requests.get(url, params=params, timeout=15,
                             headers={"Accept": "application/json",
-                                     "Authorization": f"Bearer {WDSF_TOKEN}"})
+                                     "X-WDSF-API-KEY": WDSF_TOKEN})
         # Return raw text + status for debugging when JSON fails
         try:
             return jsonify(resp.json()), resp.status_code
@@ -570,7 +570,7 @@ def list_wdsf_competitions():
 
     api_session = requests.Session()
     api_session.headers.update({"Accept": "application/json",
-                                 "Authorization": f"Bearer {WDSF_TOKEN}"})
+                                 "X-WDSF-API-KEY": WDSF_TOKEN})
 
     conn = get_db()
     already_scraped = {r["slug"] for r in

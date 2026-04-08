@@ -689,7 +689,7 @@ def wdsf_proxy(endpoint):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
- = {
+_AGE_GROUP_SLUG = {
     "ADULT":        "Adult",
     "JUNIOR I":     "Junior-I",
     "JUNIOR II":    "Junior-II",

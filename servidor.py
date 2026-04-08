@@ -413,6 +413,11 @@ def _load_rankings_from_db():
 
 _DB_RANKINGS = _load_rankings_from_db()
 
+# ── WDSF status sync state ──────────────────────────────────────────────
+from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _as_completed
+import threading as _threading
+_sync_state = {"running": False, "last_result": None}
+
 def judge_dict(row):
     d = dict(row)
     raw_discs = d.get("disciplines","") or ""
@@ -1088,6 +1093,85 @@ def judge(jid):
     conn.close()
     return jsonify(judge_dict(row)) if row else (jsonify({"error":"Not found"}), 404)
 
+
+
+
+# ── WDSF status sync ────────────────────────────────────────────────────────────────────────
+
+def _run_wdsf_sync():
+    """Background thread: checks WDSF API for each judge and updates active status."""
+    _sync_state["running"] = True
+    try:
+        conn = get_db()
+        judges = conn.execute(
+            "SELECT id, wdsf_min, first_name, last_name, active FROM judges WHERE wdsf_min IS NOT NULL"
+        ).fetchall()
+        conn.close()
+
+        changed, errors, checked = [], [], 0
+        today = date.today().isoformat()
+
+        def _check_one(j):
+            try:
+                resp = requests.get(
+                    f"{WDSF_BASE}/adjudicator/{j[\'wdsf_min\']}",
+                    auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
+                    timeout=10, headers={"Accept": "application/json"}
+                )
+                if resp.status_code != 200:
+                    return None, f"{j[\'first_name\']} {j[\'last_name\']}: HTTP {resp.status_code}"
+                data = resp.json()
+                lic_type  = (data.get("licenseType")  or "").strip()
+                lic_valid = (data.get("licenseValidUntil") or "").strip()[:10]
+                should_active = bool(lic_type) and (not lic_valid or lic_valid >= today)
+                return {"j": j, "should_active": should_active,
+                        "lic_type": lic_type, "lic_valid": lic_valid}, None
+            except Exception as ex:
+                return None, f"{j[\'first_name\']} {j[\'last_name\']}: {str(ex)[:60]}"
+
+        with _TPE(max_workers=8) as pool:
+            futures = {pool.submit(_check_one, j): j for j in judges}
+            for future in _as_completed(futures):
+                result, err = future.result()
+                if err:
+                    errors.append(err)
+                    continue
+                if result is None:
+                    continue
+                checked += 1
+                j, should_active = result["j"], result["should_active"]
+                lic_type, lic_valid = result["lic_type"], result["lic_valid"]
+                was_active = bool(j["active"])
+                if was_active != should_active:
+                    reason = "" if should_active else (
+                        f"WDSF sync {today}: lic={lic_type or \'none\'}, valid_until={lic_valid or \'n/a\'}"
+                    )
+                    c2 = get_db()
+                    c2.execute("UPDATE judges SET active=?, notes=? WHERE id=?",
+                               (1 if should_active else 0, reason if not should_active else None, j["id"]))
+                    c2.commit(); c2.close()
+                    changed.append({"name": f"{j[\'first_name\']} {j[\'last_name\']}",
+                                    "was": "Active" if was_active else "Inactive",
+                                    "now": "Active" if should_active else "Inactive"})
+
+        _sync_state["last_result"] = {"checked": checked, "changed": changed,
+                                      "errors": errors[:20], "timestamp": today}
+    except Exception as ex:
+        _sync_state["last_result"] = {"error": str(ex), "checked": 0, "changed": [], "errors": []}
+    finally:
+        _sync_state["running"] = False
+
+
+@app.route("/api/judges/sync-wdsf-status", methods=["POST"])
+def post_sync_wdsf():
+    if _sync_state["running"]:
+        return jsonify({"status": "already_running"}), 202
+    _threading.Thread(target=_run_wdsf_sync, daemon=True).start()
+    return jsonify({"status": "started"}), 202
+
+@app.route("/api/judges/sync-wdsf-status", methods=["GET"])
+def get_sync_wdsf():
+    return jsonify({"running": _sync_state["running"], "last_result": _sync_state["last_result"]})
 
 def _fetch_discipline_from_min(wdsf_min):
     """Given a WDSF MIN, fetch the athlete profile and return discipline + career level.

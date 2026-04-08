@@ -226,6 +226,7 @@ def get_ranking_for_region(discipline, region):
     if "Standard" in discipline: return RANKING_STD
     return RANKING_TEN
 
+def get_db():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     return conn

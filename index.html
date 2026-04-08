@@ -335,8 +335,12 @@
 
 <!-- ═══════════════════ JUECES ═══════════════════ -->
 <div id="page-judges" class="page">
-  <div class="page-header">
+  <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
     <div class="page-title">👥 Judges <span id="judges-count" style="font-size:1rem;color:var(--gray-500);font-weight:400"></span></div>
+    <button class="btn btn-outline" onclick="startWDSFSync()" id="sync-wdsf-btn"
+            style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
+      🔄 Sync WDSF status
+    </button>
   </div>
 
   <div class="card" style="margin-bottom:1rem;">
@@ -775,6 +779,12 @@
           <input type="checkbox" id="ev-ags"> AGS (12 judges in 4 groups)
         </label>
       </div>
+      <div class="form-group full" id="ej-reason-group" style="display:none">
+        <label style="color:#ef4444;font-size:0.8rem">Reason for inactivity <span style="color:var(--gray-400)">(optional)</span></label>
+        <textarea id="ej-notes" rows="2" placeholder="e.g. Licence expired, health issue, sabbatical..."
+          style="width:100%;padding:0.5rem;border:1px solid #fca5a5;border-radius:0.4rem;font-size:0.85rem;resize:vertical"></textarea>
+      </div>
+      <div id="ej-wdsf-sync-info" style="display:none;font-size:0.75rem;color:var(--gray-500);padding:0.4rem 0.6rem;background:#f8fafc;border-radius:0.4rem;border:1px solid #e2e8f0;margin-top:-0.25rem"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEventModal()">Cancel</button>
@@ -816,7 +826,8 @@
       </div>
       <div class="form-group full" style="justify-content:flex-start">
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:400">
-          <input type="checkbox" id="ej-active"> Active license
+          <input type="checkbox" id="ej-active" onchange="toggleInactiveReason()">
+          <span>Active <span style="color:var(--gray-400);font-size:0.8rem">(available for panel assignment)</span></span>
         </label>
       </div>
     </div>
@@ -1037,7 +1048,13 @@ async function loadJudges() {
         <td style="text-align:center"><strong>${j.judging_world_championships ?? 0}</strong></td>
         <td style="text-align:center">${j.judging_grand_slams ?? 0}</td>
         <td style="text-align:center">${j.judging_continental_championships ?? 0}</td>
-        <td><span class="badge ${j.active ? 'badge-active' : 'badge-inactive'}">${j.active ? 'Active' : 'Inactive'}</span></td>
+        <td>
+          <span class="badge ${j.active ? 'badge-active' : 'badge-inactive'}"
+                title="${j.active ? 'Click to mark inactive' : (j.notes ? 'Reason: ' + j.notes + '\nClick to reactivate' : 'Click to reactivate')}"
+                style="cursor:pointer" onclick="quickToggleActive(${j.id}, ${j.active ? 1 : 0}, '${(j.last_name||'').replace(/'/g,"\\'")} ${(j.first_name||'').replace(/'/g,"\\'")}')">
+            ${j.active ? 'Active' : 'Inactive'}
+          </span>
+        </td>
         <td><button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})">✎</button></td>
       </tr>`;
     }).join('');
@@ -1098,8 +1115,28 @@ async function openEditJudge(jid) {
     document.getElementById('ej-primary').value     = j.primary_discipline || '';
     document.getElementById('ej-career').value      = j.career_level || 'national';
     document.getElementById('ej-active').checked    = !!j.active;
+    document.getElementById('ej-notes').value       = j.notes || '';
+    // Show reason box if inactive
+    document.getElementById('ej-reason-group').style.display = j.active ? 'none' : 'block';
+    // Show WDSF sync info if notes contain sync info
+    const syncInfo = document.getElementById('ej-wdsf-sync-info');
+    if (j.notes && j.notes.includes('WDSF sync')) {
+      syncInfo.style.display = 'block';
+      syncInfo.textContent   = '🔄 ' + j.notes;
+    } else {
+      syncInfo.style.display = 'none';
+    }
     document.getElementById('edit-judge-modal').classList.add('open');
   } catch(e) { toast('Error loading judge', 'error'); }
+}
+
+function toggleInactiveReason() {
+  const active = document.getElementById('ej-active').checked;
+  document.getElementById('ej-reason-group').style.display = active ? 'none' : 'block';
+  if (active) {
+    document.getElementById('ej-notes').value = '';
+    document.getElementById('ej-wdsf-sync-info').style.display = 'none';
+  }
 }
 
 function closeEditJudge() {
@@ -1111,17 +1148,112 @@ async function saveEditJudge() {
   const primary = document.getElementById('ej-primary').value;
   const career  = document.getElementById('ej-career').value;
   const active  = document.getElementById('ej-active').checked ? 1 : 0;
+  const notes   = document.getElementById('ej-notes').value.trim() || null;
   try {
     const res = await fetch(API + '/judges/' + jid, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ primary_discipline: primary || null, career_level: career, active })
+      body: JSON.stringify({ primary_discipline: primary || null, career_level: career, active, notes })
     });
     if (!res.ok) throw new Error('Error saving');
     closeEditJudge();
     toast('✓ Judge updated', 'success');
     loadJudges();
   } catch(e) { toast('Error: ' + e.message, 'error'); }
+}
+
+// Quick inline active/inactive toggle from status badge
+async function quickToggleActive(jid, currentActive, name) {
+  if (currentActive) {
+    // Ask for reason before deactivating
+    const reason = prompt(`Mark "${name}" as INACTIVE?\n\nReason (optional):`, '');
+    if (reason === null) return; // cancelled
+    try {
+      await fetch(API + '/judges/' + jid, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ active: 0, notes: reason || null })
+      });
+      toast(`✓ ${name} marked as Inactive`, 'success');
+      loadJudges();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  } else {
+    if (!confirm(`Reactivate "${name}"?`)) return;
+    try {
+      await fetch(API + '/judges/' + jid, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ active: 1, notes: null })
+      });
+      toast(`✓ ${name} reactivated`, 'success');
+      loadJudges();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  }
+}
+
+// WDSF sync
+let _syncPollInterval = null;
+
+async function startWDSFSync() {
+  const btn = document.getElementById('sync-wdsf-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing...';
+  try {
+    const res = await fetch(API + '/judges/sync-wdsf-status', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'already_running') {
+      toast('Sync already running...', 'info');
+      pollSyncStatus();
+      return;
+    }
+    toast('🔄 WDSF sync started — checking all judges...', 'success');
+    pollSyncStatus();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '🔄 Sync WDSF status';
+    toast('Error starting sync: ' + e.message, 'error');
+  }
+}
+
+function pollSyncStatus() {
+  clearInterval(_syncPollInterval);
+  _syncPollInterval = setInterval(async () => {
+    try {
+      const data = await fetch(API + '/judges/sync-wdsf-status').then(r => r.json());
+      if (!data.running) {
+        clearInterval(_syncPollInterval);
+        const btn = document.getElementById('sync-wdsf-btn');
+        btn.disabled = false;
+        btn.textContent = '🔄 Sync WDSF status';
+        if (data.last_result) {
+          showSyncResult(data.last_result);
+          loadJudges();
+        }
+      }
+    } catch(e) {
+      clearInterval(_syncPollInterval);
+      const btn = document.getElementById('sync-wdsf-btn');
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync WDSF status'; }
+    }
+  }, 3000);
+}
+
+function showSyncResult(result) {
+  const changed = result.changed || [];
+  const errors  = result.errors  || [];
+  let msg = `✅ WDSF Sync complete\n\nChecked: ${result.checked} judges`;
+  if (changed.length) {
+    msg += `\n\n⚠️ ${changed.length} status change(s):\n`;
+    msg += changed.map(c => `• ${c.name}: ${c.was} → ${c.now}`).join('\n');
+  } else {
+    msg += '\n\n✓ No status changes found';
+  }
+  if (errors.length) {
+    msg += `\n\n❌ ${errors.length} error(s):\n`;
+    msg += errors.slice(0, 5).map(e => `• ${e}`).join('\n');
+    if (errors.length > 5) msg += `\n...and ${errors.length - 5} more`;
+  }
+  alert(msg);
 }
 
 function editPrimary(jid, name) {

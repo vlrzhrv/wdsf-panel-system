@@ -364,6 +364,18 @@ def sync():
             conn.execute("UPDATE official_nominations SET judge_id=? WHERE id=?",
                          (jid, row["id"]))
             backfilled += 1
+        else:
+            nm = row["judge_name"] or ""
+            cc = row["judge_country"] or ""
+            cf = {"CZE":"Czechia","DEN":"Denmark","GBR":"United Kingdom","SLO":"Slovenia","SRB":"Serbia","EST":"Estonia","ITA":"Italy","VIE":"Vietnam","CHN":"China, People's Republic of","MLT":"Malta","OIN":"AIN","KOR":"Korea","PHI":"Philippines","MGL":"Mongolia","ECU":"Ecuador"}.get(cc.strip().upper(), cc)
+            parts = nm.strip().split()
+            if len(parts) >= 2:
+                ln, fn = parts[-1], parts[0]
+                r1 = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? AND (UPPER(representing)=? OR UPPER(nationality)=?)",(ln.upper(),fn.upper()+"%",cf.upper(),cf.upper())).fetchall()
+                r2 = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=?",(ln.upper(),)).fetchall()
+                print(f"    NO MATCH: {repr(nm)} cc={repr(cc)} cf={repr(cf)} s1={len(r1)} lastname_rows={[r[0] for r in r2]}")
+            else:
+                print(f"    NO MATCH (pocas partes): {repr(nm)} cc={repr(cc)}")
     if backfilled:
         conn.commit()
         print(f"  Backfill: {backfilled} entradas históricas emparejadas")

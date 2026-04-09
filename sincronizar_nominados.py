@@ -129,9 +129,11 @@ def find_judge(conn, full_name, country_code):
         "BLR":"Belarus","SWE":"Sweden","FIN":"Finland","SUI":"Switzerland",
         "TUR":"Türkiye","GRE":"Greece","SRB":"Serbia","MKD":"Macedonia",
         "MDA":"Moldova","GEO":"Georgia","AZE":"Azerbaijan","ARM":"Armenia",
-        "CHN":"China","JPN":"Japan","KOR":"Korea","AUS":"Australia",
+        "CHN":"China, People's Republic of","JPN":"Japan","KOR":"Korea","AUS":"Australia",
         "USA":"United States","CAN":"Canada","BRA":"Brazil","ARG":"Argentina",
-        "MEX":"Mexico","ISR":"Israel",
+        "MEX":"Mexico","ISR":"Israel","VIE":"Vietnam","ECU":"Ecuador",
+        "MLT":"Malta","PHI":"Philippines","MGL":"Mongolia","OIN":"AIN",
+        "TPE":"Chinese Taipei","HKG":"Hong Kong","SGP":"Singapore",
     }
     country_full = country_map.get(country_code.upper(), country_code)
 
@@ -147,6 +149,20 @@ def find_judge(conn, full_name, country_code):
         ).fetchall()
         if len(rows) == 1:
             return rows[0]["id"]
+
+    # Estrategia 2: nombres compuestos (3+ partes)
+    # primer token = nombre, resto = apellido compuesto (ej. "Bo Loft Jensen")
+    if len(parts) >= 3:
+        compound_last  = " ".join(parts[1:])
+        compound_first = parts[0]
+        for ln, fn in [(compound_last, compound_first), (compound_first, compound_last)]:
+            rows = conn.execute(
+                "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? "
+                "AND (UPPER(representing)=? OR UPPER(nationality)=?)",
+                (ln.upper(), fn.upper() + "%", country_full.upper(), country_full.upper())
+            ).fetchall()
+            if len(rows) == 1:
+                return rows[0]["id"]
 
     # Solo apellido + país (si es único)
     for ln in [last, first]:

@@ -120,16 +120,16 @@ def find_judge(conn, full_name, country_code):
         return None
 
     country_map = {
-        "FRA":"France","BEL":"Belgium","CZE":"Czech Republic","ESP":"Spain",
+        "FRA":"France","BEL":"Belgium","CZE":"Czechia","ESP":"Spain",
         "POR":"Portugal","ITA":"Italy","AUT":"Austria","LTU":"Lithuania",
         "ROU":"Romania","NOR":"Norway","GER":"Germany","POL":"Poland",
         "DEN":"Denmark","GBR":"United Kingdom","NED":"Netherlands","HUN":"Hungary",
         "SVK":"Slovakia","SLO":"Slovenia","CRO":"Croatia","BUL":"Bulgaria",
         "LAT":"Latvia","EST":"Estonia","UKR":"Ukraine","RUS":"Russia",
         "BLR":"Belarus","SWE":"Sweden","FIN":"Finland","SUI":"Switzerland",
-        "TUR":"Turkey","GRE":"Greece","SRB":"Serbia","MKD":"North Macedonia",
+        "TUR":"Türkiye","GRE":"Greece","SRB":"Serbia","MKD":"Macedonia",
         "MDA":"Moldova","GEO":"Georgia","AZE":"Azerbaijan","ARM":"Armenia",
-        "CHN":"China","JPN":"Japan","KOR":"South Korea","AUS":"Australia",
+        "CHN":"China","JPN":"Japan","KOR":"Korea","AUS":"Australia",
         "USA":"United States","CAN":"Canada","BRA":"Brazil","ARG":"Argentina",
         "MEX":"Mexico","ISR":"Israel",
     }

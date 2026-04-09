@@ -351,8 +351,24 @@ def sync():
     print(f"\n  RESUMEN: {total_adj} adjudicadores, {total_nom} nominados, "
           f"{total_matched} emparejados con la BD")
     print(f"  Sincronización completada.\n")
+
+    # Backfill: re-intentar emparejar entradas antiguas con judge_id=NULL
+    # (competiciones pasadas que ya no aparecen en la página WDSF actual)
+    unmatched_rows = conn.execute(
+        "SELECT id, judge_name, judge_country FROM official_nominations WHERE judge_id IS NULL"
+    ).fetchall()
+    backfilled = 0
+    for row in unmatched_rows:
+        jid = find_judge(conn, row["judge_name"], row["judge_country"])
+        if jid:
+            conn.execute("UPDATE official_nominations SET judge_id=? WHERE id=?",
+                         (jid, row["id"]))
+            backfilled += 1
+    if backfilled:
+        conn.commit()
+        print(f"  Backfill: {backfilled} entradas históricas emparejadas")
     conn.close()
-    return {"events": len(events), "adjudicators": total_adj,
+    return {"events": len(events), "backfilled": backfilled, "adjudicators": total_adj,
             "nominated": total_nom, "matched": total_matched}
 
 

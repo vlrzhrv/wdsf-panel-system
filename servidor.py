@@ -1182,9 +1182,7 @@ def post_sync_wdsf():
 def get_sync_wdsf():
     return jsonify({"running": _sync_state["running"], "last_result": _sync_state["last_result"]})
 
-def _fetch_discipline_from_min(wdsf_min):
-    """Given a WDSF MIN, fetch the athlete profile and return discipline + career level.
-    Returns d# ── Full judge sync (sincronizar_jueces.py) ─────────────────────────────
+# ââ Full judge sync (sincronizar_jueces.py) âââââââââââââââââââââââââââââââââââ
 
 def _run_judge_sync_background(years):
     """Background thread: run comprehensive WDSF judge sync."""
@@ -1196,13 +1194,14 @@ def _run_judge_sync_background(years):
         print(msg, flush=True)
 
     try:
-        import importlib.util
+        import importlib.util, sys as _sys
         spec = importlib.util.spec_from_file_location(
             "sincronizar_jueces",
             os.path.join(APP_DIR, "sincronizar_jueces.py")
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+
         result = mod.run_sync(years=years, db_path=DB, log=_log)
         _judge_sync_state["last_result"] = result
     except Exception as ex:
@@ -1216,8 +1215,9 @@ def _run_judge_sync_background(years):
 def post_sync_judges():
     """Start a background full judge sync. POST body: {"years": [2025, 2026]}  (optional)"""
     if _judge_sync_state["running"]:
-        return jsonify({"status": "already_running", "log": _judge_sync_state["log"][-20:]}), 202
-    body = request.get_json(silent=True) or {}
+        return jsonify({"status": "already_running",
+                        "log": _judge_sync_state["log"][-20:]}), 202
+    body  = request.get_json(silent=True) or {}
     from datetime import date as _date
     today = _date.today()
     years = body.get("years", [today.year - 1, today.year])
@@ -1236,7 +1236,9 @@ def get_sync_judges():
     })
 
 
-ict: {discipline, career_level} or None on failure.
+def _fetch_discipline_from_min(wdsf_min):
+    """Given a WDSF MIN, fetch the athlete profile and return discipline + career level.
+    Returns dict: {discipline, career_level} or None on failure.
       discipline:   'Standard' | 'Latin' | '10-Dance' | None
       career_level: 'world_champion' | 'world_finalist' | 'continental_champion' |
                     'world_open_finalist' | 'grand_slam_finalist' | 'international' | None
@@ -1261,7 +1263,7 @@ ict: {discipline, career_level} or None on failure.
             return None
         athlete_url = "https://www.worlddancesport.org" + items[0]["url"]
 
-        # 2. Fetch athlete profile page (SSR — competitions embedded in HTML)
+        # 2. Fetch athlete profile page (SSR â competitions embedded in HTML)
         rp = requests.get(athlete_url, headers=HEADERS, timeout=15)
         rp.raise_for_status()
         soup = BeautifulSoup(rp.text, "html.parser")
@@ -1282,7 +1284,7 @@ ict: {discipline, career_level} or None on failure.
         )]
 
         if len(comp_rows) < 2:
-            # Not enough competition data — can't determine discipline
+            # Not enough competition data â can't determine discipline
             std_count = 0
             lat_count = 0
         else:
@@ -1290,7 +1292,7 @@ ict: {discipline, career_level} or None on failure.
             std_count = all_text.count("standard")
             lat_count  = all_text.count("latin")
 
-        # 4. Determine discipline — require meaningful signal (at least 3 occurrences total)
+        # 4. Determine discipline â require meaningful signal (at least 3 occurrences total)
         discipline = None
         total = std_count + lat_count
         if total >= 3:
@@ -1301,41 +1303,41 @@ ict: {discipline, career_level} or None on failure.
             else:
                 discipline = "10-Dance"
 
-        # 5. Determine career level — hierarchy:
+        # 5. Determine career level â hierarchy:
         #    Adult World/Continental > Professional World/Continental
         #    > Youth/Other World/Continental > World Open > Grand Slam
         #    Within each: Gold(1) > Silver(2) > Bronze(3) > Finalist(top6)
         best_level_score = 0
         LEVEL_MAP = [
             # (score, label)
-            # ── Adult World Championship ──────────────────────────────
-            (1000, "world_champion_adult"),       # 🥇 rank 1
-            ( 950, "world_silver_adult"),          # 🥈 rank 2
-            ( 900, "world_bronze_adult"),          # 🥉 rank 3
-            ( 800, "world_finalist_adult"),        # 🎖 top 6
+            # ââ Adult World Championship ââââââââââââââââââââââââââââââ
+            (1000, "world_champion_adult"),       # ð¥ rank 1
+            ( 950, "world_silver_adult"),          # ð¥ rank 2
+            ( 900, "world_bronze_adult"),          # ð¥ rank 3
+            ( 800, "world_finalist_adult"),        # ð top 6
             ( 750, "world_participant_adult"),     # top 12
-            # ── Adult Continental Championship ────────────────────────
-            ( 700, "continental_champion_adult"),  # 🥇 rank 1
-            ( 680, "continental_silver_adult"),    # 🥈 rank 2
-            ( 660, "continental_bronze_adult"),    # 🥉 rank 3
-            ( 600, "continental_finalist_adult"),  # 🎖 top 6
-            # ── Professional World Championship ───────────────────────
-            ( 550, "pro_world_champion"),          # 🥇 rank 1
-            ( 510, "pro_world_finalist"),          # 🎖 top 6
-            # ── Professional Continental Championship ─────────────────
-            ( 460, "pro_continental_champion"),    # 🥇 rank 1
-            ( 420, "pro_continental_finalist"),    # 🎖 top 6
-            # ── Youth/Junior/Senior/Other World Championship ──────────
-            ( 370, "world_champion_youth"),        # 🥇 rank 1
-            ( 340, "world_silver_youth"),          # 🥈 rank 2
-            ( 320, "world_bronze_youth"),          # 🥉 rank 3
-            ( 290, "world_finalist_youth"),        # 🎖 top 6
-            # ── Youth/Other Continental Championship ─────────────────
-            ( 250, "continental_champion_youth"),  # 🥇 rank 1
-            ( 230, "continental_silver_youth"),    # 🥈 rank 2
-            ( 210, "continental_bronze_youth"),    # 🥉 rank 3
-            ( 190, "continental_finalist_youth"),  # 🎖 top 6
-            # ── Open competitions ─────────────────────────────────────
+            # ââ Adult Continental Championship ââââââââââââââââââââââââ
+            ( 700, "continental_champion_adult"),  # ð¥ rank 1
+            ( 680, "continental_silver_adult"),    # ð¥ rank 2
+            ( 660, "continental_bronze_adult"),    # ð¥ rank 3
+            ( 600, "continental_finalist_adult"),  # ð top 6
+            # ââ Professional World Championship âââââââââââââââââââââââ
+            ( 550, "pro_world_champion"),          # ð¥ rank 1
+            ( 510, "pro_world_finalist"),          # ð top 6
+            # ââ Professional Continental Championship âââââââââââââââââ
+            ( 460, "pro_continental_champion"),    # ð¥ rank 1
+            ( 420, "pro_continental_finalist"),    # ð top 6
+            # ââ Youth/Junior/Senior/Other World Championship ââââââââââ
+            ( 370, "world_champion_youth"),        # ð¥ rank 1
+            ( 340, "world_silver_youth"),          # ð¥ rank 2
+            ( 320, "world_bronze_youth"),          # ð¥ rank 3
+            ( 290, "world_finalist_youth"),        # ð top 6
+            # ââ Youth/Other Continental Championship âââââââââââââââââ
+            ( 250, "continental_champion_youth"),  # ð¥ rank 1
+            ( 230, "continental_silver_youth"),    # ð¥ rank 2
+            ( 210, "continental_bronze_youth"),    # ð¥ rank 3
+            ( 190, "continental_finalist_youth"),  # ð top 6
+            # ââ Open competitions âââââââââââââââââââââââââââââââââââââ
             ( 150, "world_open_finalist"),         # top 8 at World Open
             ( 100, "grand_slam_finalist"),         # top 8 at Grand Slam
             (  10, "international"),               # competed internationally

@@ -418,6 +418,9 @@ from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _as_c
 import threading as _threading
 _sync_state = {"running": False, "last_result": None}
 
+# ── Full judge sync state ────────────────────────────────────────────
+_judge_sync_state = {"running": False, "last_result": None, "log": []}
+
 def judge_dict(row):
     d = dict(row)
     raw_discs = d.get("disciplines","") or ""
@@ -1181,7 +1184,59 @@ def get_sync_wdsf():
 
 def _fetch_discipline_from_min(wdsf_min):
     """Given a WDSF MIN, fetch the athlete profile and return discipline + career level.
-    Returns dict: {discipline, career_level} or None on failure.
+    Returns d# ── Full judge sync (sincronizar_jueces.py) ─────────────────────────────
+
+def _run_judge_sync_background(years):
+    """Background thread: run comprehensive WDSF judge sync."""
+    _judge_sync_state["running"] = True
+    _judge_sync_state["log"] = []
+
+    def _log(msg, flush=False):
+        _judge_sync_state["log"].append(str(msg))
+        print(msg, flush=True)
+
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "sincronizar_jueces",
+            os.path.join(APP_DIR, "sincronizar_jueces.py")
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        result = mod.run_sync(years=years, db_path=DB, log=_log)
+        _judge_sync_state["last_result"] = result
+    except Exception as ex:
+        _judge_sync_state["last_result"] = {"error": str(ex)}
+        _log(f"ERROR: {ex}")
+    finally:
+        _judge_sync_state["running"] = False
+
+
+@app.route("/api/sync_judges", methods=["POST"])
+def post_sync_judges():
+    """Start a background full judge sync. POST body: {"years": [2025, 2026]}  (optional)"""
+    if _judge_sync_state["running"]:
+        return jsonify({"status": "already_running", "log": _judge_sync_state["log"][-20:]}), 202
+    body = request.get_json(silent=True) or {}
+    from datetime import date as _date
+    today = _date.today()
+    years = body.get("years", [today.year - 1, today.year])
+    t = _threading.Thread(target=_run_judge_sync_background, args=(years,), daemon=True)
+    t.start()
+    return jsonify({"status": "started", "years": years}), 202
+
+
+@app.route("/api/sync_judges", methods=["GET"])
+def get_sync_judges():
+    """Poll sync progress."""
+    return jsonify({
+        "running":     _judge_sync_state["running"],
+        "last_result": _judge_sync_state["last_result"],
+        "log":         _judge_sync_state["log"][-50:],
+    })
+
+
+ict: {discipline, career_level} or None on failure.
       discipline:   'Standard' | 'Latin' | '10-Dance' | None
       career_level: 'world_champion' | 'world_finalist' | 'continental_champion' |
                     'world_open_finalist' | 'grand_slam_finalist' | 'international' | None

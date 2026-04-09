@@ -4083,6 +4083,85 @@ def monday_sync():
 def index():
     return send_from_directory(APP_DIR, "index.html")
 
+# ── Startup: re-match any judge_id=NULL nominations (runs on every deploy) ───
+def _startup_fix_unmatched_nominations():
+    """At server start, re-try matching judge_id=NULL rows using full find_judge logic."""
+    _cmap = {
+        "FRA":"France","BEL":"Belgium","CZE":"Czechia","ESP":"Spain",
+        "POR":"Portugal","ITA":"Italy","AUT":"Austria","LTU":"Lithuania",
+        "ROU":"Romania","NOR":"Norway","GER":"Germany","POL":"Poland",
+        "DEN":"Denmark","GBR":"United Kingdom","NED":"Netherlands","HUN":"Hungary",
+        "SVK":"Slovakia","SLO":"Slovenia","CRO":"Croatia","BUL":"Bulgaria",
+        "LAT":"Latvia","EST":"Estonia","UKR":"Ukraine","RUS":"Russia",
+        "BLR":"Belarus","SWE":"Sweden","FIN":"Finland","SUI":"Switzerland",
+        "TUR":"Turkey","GRE":"Greece","SRB":"Serbia","MKD":"Macedonia",
+        "MDA":"Moldova","GEO":"Georgia","AZE":"Azerbaijan","ARM":"Armenia",
+        "CHN":"China, People's Republic of","JPN":"Japan","KOR":"Korea",
+        "AUS":"Australia","USA":"United States","CAN":"Canada","BRA":"Brazil",
+        "ARG":"Argentina","MEX":"Mexico","ISR":"Israel","VIE":"Vietnam",
+        "ECU":"Ecuador","MLT":"Malta","PHI":"Philippines","MGL":"Mongolia",
+        "OIN":"AIN","TPE":"Chinese Taipei","HKG":"Hong Kong","SGP":"Singapore",
+    }
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT id, judge_name, judge_country FROM official_nominations WHERE judge_id IS NULL"
+        ).fetchall()
+        fixed = 0
+        for row in rows:
+            nm  = (row["judge_name"]    or "").strip()
+            cc  = (row["judge_country"] or "").strip().upper()
+            cf  = _cmap.get(cc, cc)
+            parts = nm.split()
+            if len(parts) < 2:
+                continue
+            jid  = None
+            last, first = parts[-1], parts[0]
+            # Strategy 1: last/first + country
+            for ln, fn in [(last, first), (first, last)]:
+                r = conn.execute(
+                    "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ?"
+                    " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
+                    (ln.upper(), fn.upper()+"%", cf.upper(), cf.upper())
+                ).fetchall()
+                if len(r) == 1:
+                    jid = r[0]["id"]; break
+            # Strategy 2: compound last name (3+ tokens)
+            if not jid and len(parts) >= 3:
+                cln = " ".join(parts[1:])
+                for ln, fn in [(cln, first), (first, cln)]:
+                    r = conn.execute(
+                        "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ?"
+                        " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
+                        (ln.upper(), fn.upper()+"%", cf.upper(), cf.upper())
+                    ).fetchall()
+                    if len(r) == 1:
+                        jid = r[0]["id"]; break
+            # Strategy 3: last name unique in country
+            if not jid:
+                for ln in [last, first]:
+                    r = conn.execute(
+                        "SELECT id FROM judges WHERE UPPER(last_name)=?"
+                        " AND (UPPER(representing)=? OR UPPER(nationality)=?)",
+                        (ln.upper(), cf.upper(), cf.upper())
+                    ).fetchall()
+                    if len(r) == 1:
+                        jid = r[0]["id"]; break
+            if jid:
+                conn.execute(
+                    "UPDATE official_nominations SET judge_id=? WHERE id=?", (jid, row["id"])
+                )
+                fixed += 1
+        if fixed:
+            conn.commit()
+            print(f"[startup] Nominations backfill: {fixed} judge_ids matched", flush=True)
+        conn.close()
+    except Exception as _e:
+        print(f"[startup] Nominations backfill error: {_e}", flush=True)
+
+_startup_fix_unmatched_nominations()
+
+
 if __name__ == "__main__":
     port     = int(os.environ.get("PORT", 5001))
     is_local = (port == 5001)

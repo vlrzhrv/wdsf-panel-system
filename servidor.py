@@ -2234,6 +2234,32 @@ def sync_nominations():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/debug_nominations")
+def debug_nominations():
+    """Debug: raw SQL para diagnosticar judge_id IS NULL."""
+    import sqlite3 as _sql
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, wdsf_comp_id, judge_name, judge_country, judge_id, section, synced_at "
+        "FROM official_nominations WHERE judge_id IS NULL ORDER BY synced_at"
+    ).fetchall()
+    result = []
+    for r in rows:
+        nm = r["judge_name"] or ""
+        cc = r["judge_country"] or ""
+        cf = {"CZE":"Czechia","DEN":"Denmark","GBR":"United Kingdom","SLO":"Slovenia","SRB":"Serbia","EST":"Estonia","ITA":"Italy","VIE":"Vietnam","CHN":"China, People's Republic of","MLT":"Malta","OIN":"AIN","KOR":"Korea","PHI":"Philippines","MGL":"Mongolia","ECU":"Ecuador"}.get(cc.strip().upper(), cc)
+        parts = nm.strip().split()
+        s1_count = 0
+        last_rows = []
+        if len(parts) >= 2:
+            ln, fn = parts[-1], parts[0]
+            s1_rows = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? AND (UPPER(representing)=? OR UPPER(nationality)=?)",(ln.upper(),fn.upper()+"%",cf.upper(),cf.upper())).fetchall()
+            s1_count = len(s1_rows)
+            last_rows = [x[0] for x in conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=?",(ln.upper(),)).fetchall()]
+        result.append({"id":r["id"],"name":repr(nm),"cc":repr(cc),"cf":cf,"s1_matches":s1_count,"lastname_ids":last_rows,"synced_at":r["synced_at"]})
+    conn.close()
+    return jsonify({"unmatched_count":len(result),"rows":result})
+
 @app.route("/api/ranking/<discipline>")
 def ranking_for_discipline(discipline):
     """Return the country ranking used for a given discipline."""

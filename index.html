@@ -742,7 +742,7 @@
         <label>Age Group</label>
         <select id="ev-age">
           <option value="Adult">Adult</option>
-          <option value="Youth">Youth</option>
+          <option v!lue="Youth">Youth</option>
           <option value="Junior">Junior</option>
           <option value="Senior I">Senior I</option>
           <option value="Senior II">Senior II</option>
@@ -779,12 +779,6 @@
           <input type="checkbox" id="ev-ags"> AGS (12 judges in 4 groups)
         </label>
       </div>
-      <div class="form-group full" id="ej-reason-group" style="display:none">
-        <label style="color:#ef4444;font-size:0.8rem">Reason for inactivity <span style="color:var(--gray-400)">(optional)</span></label>
-        <textarea id="ej-notes" rows="2" placeholder="e.g. Licence expired, health issue, sabbatical..."
-          style="width:100%;padding:0.5rem;border:1px solid #fca5a5;border-radius:0.4rem;font-size:0.85rem;resize:vertical"></textarea>
-      </div>
-      <div id="ej-wdsf-sync-info" style="display:none;font-size:0.75rem;color:var(--gray-500);padding:0.4rem 0.6rem;background:#f8fafc;border-radius:0.4rem;border:1px solid #e2e8f0;margin-top:-0.25rem"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEventModal()">Cancel</button>
@@ -830,6 +824,12 @@
           <span>Active <span style="color:var(--gray-400);font-size:0.8rem">(available for panel assignment)</span></span>
         </label>
       </div>
+      <div class="form-group full" id="ej-reason-group" style="display:none">
+        <label style="color:#ef4444;font-size:0.8rem">Reason for inactivity <span style="color:var(--gray-400)">(optional)</span></label>
+        <textarea id="ej-notes" rows="2" placeholder="e.g. Licence expired, health issue, sabbatical..."
+          style="width:100%;padding:0.5rem;border:1px solid #fca5a5;border-radius:0.4rem;font-size:0.85rem;resize:vertical"></textarea>
+      </div>
+      <div id="ej-wdsf-sync-info" style="display:none;font-size:0.75rem;color:var(--gray-500);padding:0.4rem 0.6rem;background:#f8fafc;border-radius:0.4rem;border:1px solid #e2e8f0;margin-top:-0.25rem"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEditJudge()">Cancel</button>
@@ -975,10 +975,20 @@ function renderDashEvents(events, filterStatus) {
 
   tbody.innerHTML = filtered.map(e => {
     const bg = STATUS_ROW_BG[e.status] || '';
-    const hasPanel = ['assigned','confirmed','sent_for_review','officially_nominated'].includes(e.status);
-    const goBtn = hasPanel
-      ? `<button class="btn btn-sm" onclick="goAssign(${e.id})" style="padding:0.2rem 0.6rem;font-size:0.75rem;">👁 Ver</button>`
-      : '';
+    const nm = e.name.replace(/'/g,"\\'");
+    const canReopen  = ['confirmed','sent_for_review','officially_nominated'].includes(e.status);
+    const hasPanel   = ['assigned','confirmed','sent_for_review','officially_nominated'].includes(e.status);
+    const btnStyle   = 'padding:0.2rem 0.6rem;font-size:0.75rem;';
+    let actions = '';
+    if (hasPanel) {
+      actions += `<button class="btn btn-sm" onclick="goAssign(${e.id})" style="${btnStyle}" title="Ver / editar panel">✏️ Edit</button> `;
+    } else {
+      actions += `<button class="btn btn-sm btn-success" onclick="goAssign(${e.id})" style="${btnStyle}" title="Asignar panel">🎯 Assign</button> `;
+    }
+    if (canReopen) {
+      actions += `<button class="btn btn-sm" onclick="reopenFromDash(${e.id})" style="${btnStyle};border-color:#f97316;color:#c2410c;" title="Devolver a edición">↩️ Reopen</button> `;
+    }
+    actions += `<button class="btn btn-sm btn-danger" onclick="deleteDashEvent(${e.id},'${nm}')" style="${btnStyle}" title="Eliminar evento">🗑</button>`;
     return `<tr style="background:${bg}">
       <td><strong>${e.name}</strong></td>
       <td>${e.date || '—'}</td>
@@ -986,7 +996,7 @@ function renderDashEvents(events, filterStatus) {
       <td>${e.discipline || '—'}</td>
       <td><span class="badge" style="background:#ede9fe;color:#5b21b6">${e.event_type || '—'}</span></td>
       <td>${statusBadge(e.status)}</td>
-      <td>${goBtn}</td>
+      <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('');
 }
@@ -1341,6 +1351,31 @@ async function deleteEvent(id, name) {
   }
 }
 
+async function deleteDashEvent(id, name) {
+  if (!confirm(`¿Eliminar el evento "${name}" y su panel?\nEsta acción no se puede deshacer.`)) return;
+  try {
+    await fetch(API + '/events/' + id, { method:'DELETE' });
+    toast('Evento eliminado ✓');
+    loadDashboard();
+  } catch(e) {
+    toast('Error eliminando el evento', 'error');
+  }
+}
+
+async function reopenFromDash(id) {
+  if (!confirm('¿Devolver este panel a estado "assigned" para poder editarlo de nuevo?')) return;
+  try {
+    const res  = await fetch(`${API}/events/${id}/reopen`, { method:'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al reabrir');
+    toast('Panel reabierto — puedes editarlo ✅');
+    loadDashboard();
+    goAssign(id);
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
 // ── Assignment ────────────────────────────────────────────────────────────
 
 // Almacena los datos de eventos para consulta rápida
@@ -1600,7 +1635,7 @@ async function loadExistingPanel() {
               <td style="font-weight:600">${p.judge_a}</td>
               <td style="font-weight:600">${p.judge_b}</td>
               <td style="text-align:center;color:#dc2626;font-weight:700">r = ${p.correlation.toFixed(3)}</td>
-              <td style="text-align:center;color:#6b7280">${p.n_competitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
+              <td style="text-align:center;color:#6b7280">${p.n_comptitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
             </tr>`).join('');
           warnDiv.innerHTML = `
             <div class="card" style="border:2px solid #ef4444;">
@@ -1957,7 +1992,7 @@ function scoreBreakdownHtml(j) {
         <span>${r.icon} ${r.label}</span>
         <span style="font-weight:700;color:${col}">${sign}${item.pts}<span style="color:#9ca3af;font-weight:400">/${r.max}</span></span>
       </div>
-      <div style="height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden">
+      <div style="height:4px;background:#e5e7eb;border-radius:2xx;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:${col};border-radius:2px;transition:width 0.4s"></div>
       </div>
       <div style="font-size:0.62rem;color:#6b7280;margin-top:0.1rem">${item.detail}</div>
@@ -1981,10 +2016,10 @@ function judgeCard(j, pos, isReserve=false) {
   const roleMap = {
     host_country:  ['host',   '🏠 Host Country', 'role-host'],
     top3_required: ['top3',   '⭐ Top-3',         'role-top3'],
-    asia_quota:    ['top3',   '🌏 Asia Quota',    'role-top3'],
-    invited:       ['',       '✈️ Invited',        'role-top3'],
-    selected:      ['',       'Selected',         'role-selected'],
-    reserve:       ['reserve','Reserve',          'role-reserve']
+    asia_quota:    ['top3',   '🌏 Asia Quota',     'role-top3'],
+    invited:       ['',        '✈️ Invited',        'role-top3'],
+    selected:      ['',        'Selected',         'role-selected'],
+    reserve:       ['reserve','Reserve',          'vole-reserve']
   };
   const [cls, roleLabel, roleCls] = roleMap[j.role] || ['', j.role, 'role-selected'];
   const invitedBadge = j.invited ? `<span class="badge-invited">✈️ Invited</span>` : '';
@@ -1998,8 +2033,8 @@ function judgeCard(j, pos, isReserve=false) {
 
   const swapBtn = !isReserve
     ? `<button class="btn-swap" onclick="openSwapModal(${jid},'${j.last_name}, ${j.first_name}','${country}',${score})">
-        ⇄ Cambiar juez
-       </button>`
+          ⇄ Cambiar juez
+         </button>`
     : '';
 
   return `
@@ -2044,7 +2079,7 @@ let currentEventId = null;
 let swapOldJudgeId = null;
 let swapNewJudgeId = null;
 
-async function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
+aqync function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
   swapOldJudgeId = judgeId;
   swapNewJudgeId = null;
 
@@ -2069,7 +2104,7 @@ async function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
   await fetchAlternatives('same');
 }
 
-async function changeSwapZone() {
+aqync function changeSwapZone() {
   if (!swapOldJudgeId) return;
   swapNewJudgeId = null;
   document.getElementById('confirm-swap-btn').disabled = true;
@@ -2077,7 +2112,7 @@ async function changeSwapZone() {
   await fetchAlternatives(zone);
 }
 
-async function fetchAlternatives(zone) {
+aqync function fetchAlternatives(zone) {
   document.getElementById('alt-list').innerHTML = '<div class="alt-loading">⏳ Loading candidates...</div>';
   try {
     const res  = await fetch(`${API}/events/${currentEventId}/alternatives/${swapOldJudgeId}?zone=${encodeURIComponent(zone)}`);
@@ -2114,7 +2149,7 @@ function renderAlternatives(alts) {
           <div class="alt-meta">
             ${zoneDiff}<span class="zone-badge zone-${a.zone}" style="font-size:0.65rem">${a.zone}</span>
             &nbsp;${a.country}
-            &nbsp;·&nbsp; WCH:<strong>${wch}</strong> GS:<strong>${gs}</strong> CCH:<strong>${cch}</strong>
+            &nbsp;·&nbsp; WCH:<strong>${wch}</strong> GS:<strong>${gs}</strong> CCH4<strong>${cch}</strong>
             ${a.specialty && a.specialty !== 'Unknown'
               ? `&nbsp;<span class="specialty-badge spec-${a.specialty}" style="font-size:0.6rem">
                   ${{Standard:'🎩',Latin:'💃',Both:'⚡'}[a.specialty]||''} ${a.specialty}
@@ -2191,7 +2226,7 @@ async function loadNominations() {
     const data = await fetch(API + '/nominations').then(r => r.json());
     if (!data.length) {
       container.innerHTML = `<div class="card">
-        <div class="empty-state">
+       <div class="empty-state">
           <div class="icon">🌐</div>
           <p>No data yet. Click <strong>🔄 Sync now</strong> to download WDSF nominees.</p>
         </div></div>`;
@@ -2762,7 +2797,7 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
         <div class="alert alert-info">No shared finals found with enough data (min. 4 couples).</div>
         <div style="margin-top:0.5rem">
           <button class="btn btn-outline btn-sm" onclick="${toggleFn}" style="font-size:0.8rem">
-            🔄 ${toggleLabel}
+            �D ${toggleLabel}
           </button>
         </div>`;
       return;

@@ -654,7 +654,7 @@
       </div>
 
       <!-- Pair matrix -->
-      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">All judge pairs (sorted by similarity ↓)</div>
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">All judge pairs (sorted by similarity ₓ)</div>
       <div id="div-pair-table" class="table-wrap"></div>
     </div>
   </div>
@@ -1992,7 +1992,7 @@ function scoreBreakdownHtml(j) {
         <span>${r.icon} ${r.label}</span>
         <span style="font-weight:700;color:${col}">${sign}${item.pts}<span style="color:#9ca3af;font-weight:400">/${r.max}</span></span>
       </div>
-      <div style="height:4px;background:#e5e7eb;border-radius:2xx;overflow:hidden">
+      <div style="height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden">
         <div style="width:${pct}%;height:100%;background:${col};border-radius:2px;transition:width 0.4s"></div>
       </div>
       <div style="font-size:0.62rem;color:#6b7280;margin-top:0.1rem">${item.detail}</div>
@@ -2016,10 +2016,10 @@ function judgeCard(j, pos, isReserve=false) {
   const roleMap = {
     host_country:  ['host',   '🏠 Host Country', 'role-host'],
     top3_required: ['top3',   '⭐ Top-3',         'role-top3'],
-    asia_quota:    ['top3',   '🌏 Asia Quota',     'role-top3'],
-    invited:       ['',        '✈️ Invited',        'role-top3'],
-    selected:      ['',        'Selected',         'role-selected'],
-    reserve:       ['reserve','Reserve',          'vole-reserve']
+    asia_quota:    ['top3',   '🌏 Asia Quota',    'role-top3'],
+    invited:       ['',       '✈️ Invited',        'role-top3'],
+    selected:      ['',       'Selected',         'role-selected'],
+    reserve:       ['reserve','Reserve',          'role-reserve']
   };
   const [cls, roleLabel, roleCls] = roleMap[j.role] || ['', j.role, 'role-selected'];
   const invitedBadge = j.invited ? `<span class="badge-invited">✈️ Invited</span>` : '';
@@ -2033,8 +2033,8 @@ function judgeCard(j, pos, isReserve=false) {
 
   const swapBtn = !isReserve
     ? `<button class="btn-swap" onclick="openSwapModal(${jid},'${j.last_name}, ${j.first_name}','${country}',${score})">
-          ⇄ Cambiar juez
-         </button>`
+        ⇄ Cambiar juez
+       </button>`
     : '';
 
   return `
@@ -2079,7 +2079,7 @@ let currentEventId = null;
 let swapOldJudgeId = null;
 let swapNewJudgeId = null;
 
-aqync function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
+async function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
   swapOldJudgeId = judgeId;
   swapNewJudgeId = null;
 
@@ -2104,7 +2104,7 @@ aqync function openSwapModal(judgeId, judgeName, judgeCountry, judgeScore) {
   await fetchAlternatives('same');
 }
 
-aqync function changeSwapZone() {
+async function changeSwapZone() {
   if (!swapOldJudgeId) return;
   swapNewJudgeId = null;
   document.getElementById('confirm-swap-btn').disabled = true;
@@ -2112,7 +2112,7 @@ aqync function changeSwapZone() {
   await fetchAlternatives(zone);
 }
 
-aqync function fetchAlternatives(zone) {
+async function fetchAlternatives(zone) {
   document.getElementById('alt-list').innerHTML = '<div class="alt-loading">⏳ Loading candidates...</div>';
   try {
     const res  = await fetch(`${API}/events/${currentEventId}/alternatives/${swapOldJudgeId}?zone=${encodeURIComponent(zone)}`);
@@ -2149,7 +2149,7 @@ function renderAlternatives(alts) {
           <div class="alt-meta">
             ${zoneDiff}<span class="zone-badge zone-${a.zone}" style="font-size:0.65rem">${a.zone}</span>
             &nbsp;${a.country}
-            &nbsp;·&nbsp; WCH:<strong>${wch}</strong> GS:<strong>${gs}</strong> CCH4<strong>${cch}</strong>
+            &nbsp;·&nbsp; WCH:<strong>${wch}</strong> GS:<strong>${gs}</strong> CCH:<strong>${cch}</strong>
             ${a.specialty && a.specialty !== 'Unknown'
               ? `&nbsp;<span class="specialty-badge spec-${a.specialty}" style="font-size:0.6rem">
                   ${{Standard:'🎩',Latin:'💃',Both:'⚡'}[a.specialty]||''} ${a.specialty}
@@ -2226,7 +2226,7 @@ async function loadNominations() {
     const data = await fetch(API + '/nominations').then(r => r.json());
     if (!data.length) {
       container.innerHTML = `<div class="card">
-       <div class="empty-state">
+        <div class="empty-state">
           <div class="icon">🌐</div>
           <p>No data yet. Click <strong>🔄 Sync now</strong> to download WDSF nominees.</p>
         </div></div>`;
@@ -2782,7 +2782,8 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
     if (data.error) throw new Error(data.error);
 
     const discBadge = d => d === 'Standard'
-      ? `<span class="disc-badge disc-Standard">🎩 Standard</span>`
+      ? `
+      <span class="disc-badge disc-Standard">🎩 Standard</span>`
       : d === 'Latin'
         ? `<span class="disc-badge disc-Latin">💃 Latin</span>`
         : `<span style="color:#6b7280">${d}</span>`;
@@ -2797,7 +2798,7 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
         <div class="alert alert-info">No shared finals found with enough data (min. 4 couples).</div>
         <div style="margin-top:0.5rem">
           <button class="btn btn-outline btn-sm" onclick="${toggleFn}" style="font-size:0.8rem">
-            �D ${toggleLabel}
+            🔄 ${toggleLabel}
           </button>
         </div>`;
       return;

@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 import sqlite3, os, requests, shutil
-from requests.auth import HTTPBasicAuth
 from datetime import date
 
 # ── Directorio raíz de la app (donde está este archivo) ──────────────────────
@@ -47,8 +46,7 @@ def require_password():
         )
 
 # ── WDSF API credentials ──────────────────────────────────────────────────────
-WDSF_USER = os.environ.get("WDSF_USER", "")
-WDSF_PASS = os.environ.get("WDSF_PASS", "")
+WDSF_TOKEN = os.environ.get("WDSF_TOKEN", "")
 WDSF_BASE = "https://services.worlddancesport.org/api/1"
 
 # Country name normalization (WDSF API names → standard names)
@@ -199,23 +197,7 @@ RANKING_STD_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 RANKING_LAT_AFRICA   = ["South Africa","Egypt","Morocco","Kenya","Nigeria"]
 
 def get_ranking_for_region(discipline, region):
-    """Return ranking list filtered/adapted for the championship region.
-    Prioriza datos de la tabla country_rankings en la BD si existen;
-    si no, usa los rankings hardcodeados como fallback."""
-    # Normalizar disciplina para la clave de BD
-    if "Standard" in discipline:
-        disc_key = "Standard"
-    elif "Latin" in discipline:
-        disc_key = "Latin"
-    else:
-        disc_key = "Ten Dance"
-
-    # Intentar BD primero
-    db_key = (disc_key, region)
-    if _DB_RANKINGS and db_key in _DB_RANKINGS:
-        return _DB_RANKINGS[db_key]
-
-    # Fallback: valores hardcodeados
+    """Return ranking list filtered/adapted for the championship region."""
     if region == "Asia":
         return RANKING_STD_ASIA if "Standard" in discipline else RANKING_LAT_ASIA
     if region == "Americas":
@@ -226,7 +208,7 @@ def get_ranking_for_region(discipline, region):
         base = RANKING_STD if "Standard" in discipline else (RANKING_LAT if "Latin" in discipline else RANKING_TEN)
         return [c for c in base if ZONES.get(c,"") in EUROPEAN_ZONES]
     # World / default
-    if "Latin" in discipline:    return RANKING_LAT
+    if "Latin" in discipline:   return RANKING_LAT
     if "Standard" in discipline: return RANKING_STD
     return RANKING_TEN
 
@@ -236,68 +218,8 @@ def get_db():
     return conn
 
 def init_db():
-    """Crea/migra TODAS las tablas. Seguro ejecutar en cada arranque.
-    Garantiza que un deploy en Railway con volumen vacío arranca sin errores."""
+    """Crea tablas nuevas si no existen (seguro ejecutar en cada arranque)."""
     conn = get_db()
-
-    # ── Tablas principales ────────────────────────────────────────────────────
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judges (
-            id                                INTEGER PRIMARY KEY AUTOINCREMENT,
-            wdsf_min                          INTEGER UNIQUE,
-            first_name                        TEXT,
-            last_name                         TEXT,
-            nationality                       TEXT,
-            representing                      TEXT,
-            license_type                      TEXT,
-            license_valid_until               TEXT,
-            disciplines                       TEXT,
-            judging_world_championships       INTEGER DEFAULT 0,
-            judging_grand_slams               INTEGER DEFAULT 0,
-            judging_continental_championships INTEGER DEFAULT 0,
-            active                            INTEGER DEFAULT 1,
-            notes                             TEXT,
-            career_level                      TEXT DEFAULT 'national',
-            zone                              TEXT,
-            std_panels_count                  INTEGER DEFAULT 0,
-            lat_panels_count                  INTEGER DEFAULT 0,
-            specialty                         TEXT,
-            primary_discipline                TEXT
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT,
-            date        TEXT,
-            location    TEXT,
-            country     TEXT,
-            discipline  TEXT,
-            age_group   TEXT,
-            division    TEXT,
-            event_type  TEXT,
-            is_ags      INTEGER DEFAULT 0,
-            coefficient REAL DEFAULT 1.0,
-            status      TEXT DEFAULT 'pending',
-            wdsf_id     TEXT,
-            url         TEXT
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS panel_assignments (
-            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_id               INTEGER REFERENCES events(id),
-            judge_id               INTEGER REFERENCES judges(id),
-            role                   TEXT DEFAULT 'adjudicator',
-            position               INTEGER,
-            score                  REAL,
-            status                 TEXT DEFAULT 'proposed',
-            competition_identifier TEXT
-        )
-    """)
-
     conn.execute("""
         CREATE TABLE IF NOT EXISTS official_nominations (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,126 +234,20 @@ def init_db():
             judge_id          INTEGER REFERENCES judges(id),
             role              TEXT,
             status            TEXT,
-            section           TEXT,
-            position          TEXT,
+            section           TEXT,  -- 'adjudicator' | 'nominated'
+            position          TEXT,  -- letra A-I si es adjudicador confirmado
             synced_at         TEXT,
             UNIQUE(wdsf_comp_id, judge_name, section)
         )
     """)
-
-    # ── Tablas de correlaciones ───────────────────────────────────────────────
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_marks_history (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            competition_slug TEXT NOT NULL,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            round_num        INTEGER,
-            judge_letter     TEXT,
-            judge_name       TEXT,
-            judge_country    TEXT,
-            couple_num       TEXT,
-            marks_count      INTEGER,
-            scraped_at       TEXT,
-            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
-        )
-    """)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS scraped_competitions (
-            slug             TEXT PRIMARY KEY,
-            competition_name TEXT,
-            competition_date TEXT,
-            discipline       TEXT,
-            n_rounds         INTEGER,
-            n_judges         INTEGER,
-            n_couples        INTEGER,
-            scraped_at       TEXT
-        )
-    """)
-
-    # Migrar: eliminar judge_pair_correlations si le falta la columna discipline
-    existing_corr_cols = [r[1] for r in conn.execute(
-        "PRAGMA table_info(judge_pair_correlations)"
-    ).fetchall()]
-    if existing_corr_cols and "discipline" not in existing_corr_cols:
-        conn.execute("DROP TABLE judge_pair_correlations")
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
-            judge_name_a      TEXT NOT NULL,
-            judge_name_b      TEXT NOT NULL,
-            discipline        TEXT NOT NULL DEFAULT 'Unknown',
-            correlation       REAL,
-            n_competitions    INTEGER,
-            n_data_points     INTEGER,
-            last_updated      TEXT,
-            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
-        )
-    """)
-
-    # ── Migraciones seguras: añadir columnas nuevas sin romper datos ──────────
-    def _add_col(table, col, col_def):
-        cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-        if col not in cols:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
-
-    _add_col("judges", "primary_discipline",  "TEXT")
-    _add_col("judges", "std_panels_count",    "INTEGER DEFAULT 0")
-    _add_col("judges", "lat_panels_count",    "INTEGER DEFAULT 0")
-    _add_col("judges", "specialty",           "TEXT")
-    _add_col("events", "wdsf_id",             "TEXT")
-    _add_col("events", "url",                 "TEXT")
-    _add_col("panel_assignments", "competition_identifier", "TEXT")
-
-    # ── Tabla de rankings de países (editable desde la BD sin tocar código) ───
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS country_rankings (
-            discipline  TEXT NOT NULL,  -- Standard | Latin | Ten Dance
-            region      TEXT NOT NULL,  -- World | Europe | Asia | Americas | Africa
-            rank_order  INTEGER NOT NULL,
-            country     TEXT NOT NULL,
-            PRIMARY KEY (discipline, region, rank_order)
-        )
-    """)
-
+    # Añadir primary_discipline si no existe (migracion segura)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(judges)").fetchall()]
+    if "primary_discipline" not in cols:
+        conn.execute("ALTER TABLE judges ADD COLUMN primary_discipline TEXT")
     conn.commit()
     conn.close()
 
 init_db()
-
-
-def _load_rankings_from_db():
-    """Lee los rankings de la BD. Si hay datos, devuelve un dict
-    {(discipline, region): [country, ...]}. Si la tabla está vacía,
-    devuelve {} para que el código use los valores hardcodeados."""
-    try:
-        conn = get_db()
-        rows = conn.execute(
-            "SELECT discipline, region, country FROM country_rankings ORDER BY discipline, region, rank_order"
-        ).fetchall()
-        conn.close()
-        if not rows:
-            return {}
-        result = {}
-        for r in rows:
-            key = (r["discipline"], r["region"])
-            result.setdefault(key, []).append(r["country"])
-        return result
-    except Exception:
-        return {}
-
-# Rankings dinámicos: se combinan los valores de BD con los hardcodeados como fallback.
-# La BD tiene prioridad. Se recargan al iniciar la app.
-_DB_RANKINGS = _load_rankings_from_db()
-
-# ── WDSF status sync state ──────────────────────────────────────────────────
-import threading as _threading
-_sync_state = {"running": False, "last_result": None}
-
-# ── Full judge sync state ────────────────────────────────────────────────────
-_judge_sync_state = {"running": False, "last_result": None, "log": []}
 
 def judge_dict(row):
     d = dict(row)
@@ -647,78 +463,14 @@ def calc_score(j, event, assigned_zones, return_breakdown=False,
 
 @app.route("/api/wdsf/<path:endpoint>")
 def wdsf_proxy(endpoint):
-    """Proxy calls to WDSF API with credentials.
-    For the 'competition' endpoint applies server-side filtering because
-    the WDSF API v1 ignores status/discipline/take params in many cases.
-    """
+    """Proxy calls to WDSF API with credentials."""
     try:
         params = dict(request.args)
-
-        # ── Special handling for /competition endpoint ────────────────────────
-        if endpoint.lower() in ("competition", "competition/"):
-            today = date.today().isoformat()
-
-            # Extract our virtual params (not forwarded to WDSF API)
-            req_status    = params.pop("status",     None)   # Upcoming | Closed
-            req_discipline= params.pop("discipline", None)   # LAT | STD | TEN
-            req_take      = params.pop("take",       None)   # int limit
-
-            # Translate status → date range for WDSF API
-            if req_status == "Upcoming":
-                params.setdefault("from", today)
-            elif req_status == "Closed":
-                params.setdefault("to", today)
-                params["status"] = "Closed"
-
-            url  = f"{WDSF_BASE}/competition"
-            resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                                params=params, timeout=20,
-                                headers={"Accept": "application/json"})
-            try:
-                data = resp.json()
-            except Exception:
-                return jsonify({"status": resp.status_code, "raw": resp.text[:2000]}), 200
-
-            if not isinstance(data, list):
-                return jsonify(data), resp.status_code
-
-            # Server-side date filter for Upcoming
-            if req_status == "Upcoming":
-                def _comp_date(c):
-                    name = c.get("name", "")
-                    # Name ends with "- YYYY/MM/DD"
-                    parts = name.rsplit(" - ", 1)
-                    if len(parts) == 2:
-                        raw = parts[1].strip().replace("/", "-")
-                        return raw if len(raw) == 10 else ""
-                    return ""
-                data = [c for c in data if _comp_date(c) >= today]
-
-            # Server-side discipline filter (by name keyword)
-            if req_discipline:
-                disc_upper = req_discipline.upper()
-                disc_keywords = {
-                    "LAT": ["LATIN"],
-                    "STD": ["STANDARD"],
-                    "TEN": ["TEN DANCE", "10 DANCE"],
-                }.get(disc_upper, [disc_upper])
-                data = [c for c in data
-                        if any(kw in c.get("name","").upper() for kw in disc_keywords)]
-
-            # Server-side take limit
-            if req_take:
-                try:
-                    data = data[:int(req_take)]
-                except (ValueError, TypeError):
-                    pass
-
-            return jsonify(data), resp.status_code
-
-        # ── All other endpoints: pass through unchanged ───────────────────────
-        url  = f"{WDSF_BASE}/{endpoint}"
-        resp = requests.get(url, auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                            params=params, timeout=15,
-                            headers={"Accept": "application/json"})
+        url = f"{WDSF_BASE}/{endpoint}"
+        resp = requests.get(url, params=params, timeout=15,
+                            headers={"Accept": "application/json",
+                                     "Authorization": f"Bearer {WDSF_TOKEN}"})
+        # Return raw text + status for debugging when JSON fails
         try:
             return jsonify(resp.json()), resp.status_code
         except Exception:
@@ -817,8 +569,8 @@ def list_wdsf_competitions():
     year = int(data.get("year", 2026))
 
     api_session = requests.Session()
-    api_session.auth = HTTPBasicAuth(WDSF_USER, WDSF_PASS)
-    api_session.headers.update({"Accept": "application/json"})
+    api_session.headers.update({"Accept": "application/json",
+                                 "Authorization": f"Bearer {WDSF_TOKEN}"})
 
     conn = get_db()
     already_scraped = {r["slug"] for r in
@@ -1124,149 +876,6 @@ def judge(jid):
     row = conn.execute("SELECT * FROM judges WHERE id=?", (jid,)).fetchone()
     conn.close()
     return jsonify(judge_dict(row)) if row else (jsonify({"error":"Not found"}), 404)
-
-
-# ── WDSF status sync ────────────────────────────────────────────────────────
-
-def _run_wdsf_sync():
-    """Background thread: check WDSF API for each judge and update active status."""
-    _sync_state["running"] = True
-    try:
-        conn = get_db()
-        judges = conn.execute(
-            "SELECT id, wdsf_min, first_name, last_name, active FROM judges WHERE wdsf_min IS NOT NULL"
-        ).fetchall()
-        conn.close()
-
-        changed, errors, checked = [], [], 0
-        today = date.today().isoformat()
-
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        def _check_one(j):
-            try:
-                resp = requests.get(
-                    f"{WDSF_BASE}/adjudicator/{j['wdsf_min']}",
-                    auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                    timeout=10,
-                    headers={"Accept": "application/json"}
-                )
-                if resp.status_code != 200:
-                    return None, f"{j['first_name']} {j['last_name']}: HTTP {resp.status_code}"
-                data = resp.json()
-                lic_type  = (data.get("licenseType") or "").strip()
-                lic_valid = (data.get("licenseValidUntil") or "").strip()[:10]
-                # Active = has a license type AND (no expiry date OR expiry is today or future)
-                should_active = bool(lic_type) and (not lic_valid or lic_valid >= today)
-                return {"j": j, "should_active": should_active,
-                        "lic_type": lic_type, "lic_valid": lic_valid}, None
-            except Exception as ex:
-                return None, f"{j['first_name']} {j['last_name']}: {str(ex)[:60]}"
-
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            futures = {pool.submit(_check_one, j): j for j in judges}
-            for future in as_completed(futures):
-                result, err = future.result()
-                if err:
-                    errors.append(err)
-                    continue
-                if result is None:
-                    continue
-                checked += 1
-                j, should_active = result["j"], result["should_active"]
-                lic_type, lic_valid = result["lic_type"], result["lic_valid"]
-                was_active = bool(j["active"])
-                if was_active != should_active:
-                    reason = "" if should_active else (
-                        f"WDSF sync {today}: lic={lic_type or 'none'}, valid_until={lic_valid or 'n/a'}"
-                    )
-                    c = get_db()
-                    c.execute("UPDATE judges SET active=?, notes=? WHERE id=?",
-                              (1 if should_active else 0, reason if not should_active else None, j["id"]))
-                    c.commit()
-                    c.close()
-                    changed.append({
-                        "name": f"{j['first_name']} {j['last_name']}",
-                        "was": "Active" if was_active else "Inactive",
-                        "now": "Active" if should_active else "Inactive",
-                        "reason": reason
-                    })
-
-        _sync_state["last_result"] = {
-            "checked": checked, "changed": changed,
-            "errors": errors[:20], "timestamp": today
-        }
-    except Exception as ex:
-        _sync_state["last_result"] = {"error": str(ex), "checked": 0, "changed": [], "errors": []}
-    finally:
-        _sync_state["running"] = False
-
-
-@app.route("/api/judges/sync-wdsf-status", methods=["POST"])
-def post_sync_wdsf():
-    if _sync_state["running"]:
-        return jsonify({"status": "already_running"}), 202
-    t = _threading.Thread(target=_run_wdsf_sync, daemon=True)
-    t.start()
-    return jsonify({"status": "started"}), 202
-
-@app.route("/api/judges/sync-wdsf-status", methods=["GET"])
-def get_sync_wdsf():
-    return jsonify({"running": _sync_state["running"], "last_result": _sync_state["last_result"]})
-
-
-# ── Full judge sync (sincronizar_jueces.py) ───────────────────────────────────
-
-def _run_judge_sync_background(years):
-    """Background thread: run comprehensive WDSF judge sync."""
-    _judge_sync_state["running"] = True
-    _judge_sync_state["log"] = []
-
-    def _log(msg, flush=False):
-        _judge_sync_state["log"].append(str(msg))
-        print(msg, flush=True)
-
-    try:
-        import importlib.util, sys as _sys
-        spec = importlib.util.spec_from_file_location(
-            "sincronizar_jueces",
-            os.path.join(APP_DIR, "sincronizar_jueces.py")
-        )
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-
-        result = mod.run_sync(years=years, db_path=DB, log=_log)
-        _judge_sync_state["last_result"] = result
-    except Exception as ex:
-        _judge_sync_state["last_result"] = {"error": str(ex)}
-        _log(f"ERROR: {ex}")
-    finally:
-        _judge_sync_state["running"] = False
-
-
-@app.route("/api/sync_judges", methods=["POST"])
-def post_sync_judges():
-    """Start a background full judge sync. POST body: {"years": [2025, 2026]}  (optional)"""
-    if _judge_sync_state["running"]:
-        return jsonify({"status": "already_running",
-                        "log": _judge_sync_state["log"][-20:]}), 202
-    body  = request.get_json(silent=True) or {}
-    from datetime import date as _date
-    today = _date.today()
-    years = body.get("years", [today.year - 1, today.year])
-    t = _threading.Thread(target=_run_judge_sync_background, args=(years,), daemon=True)
-    t.start()
-    return jsonify({"status": "started", "years": years}), 202
-
-
-@app.route("/api/sync_judges", methods=["GET"])
-def get_sync_judges():
-    """Poll sync progress."""
-    return jsonify({
-        "running":     _judge_sync_state["running"],
-        "last_result": _judge_sync_state["last_result"],
-        "log":         _judge_sync_state["log"][-50:],
-    })
 
 
 def _fetch_discipline_from_min(wdsf_min):
@@ -2329,6 +1938,7 @@ def ranking_for_discipline(discipline):
     """Return the country ranking used for a given discipline."""
     ranking = get_ranking(discipline)
     conn = get_db()
+    # For each ranked country, check how many eligible License A judges exist
     result = []
     for i, country in enumerate(ranking):
         count = conn.execute(
@@ -2340,81 +1950,21 @@ def ranking_for_discipline(discipline):
     return jsonify(result)
 
 
-@app.route("/api/rankings", methods=["GET"])
-def get_all_rankings():
-    """Devuelve todos los rankings guardados en la BD.
-    Si la BD está vacía devuelve los hardcodeados como referencia."""
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT discipline, region, rank_order, country FROM country_rankings ORDER BY discipline, region, rank_order"
-    ).fetchall()
-    conn.close()
-    if rows:
-        result = {}
-        for r in rows:
-            key = f"{r['discipline']}_{r['region']}"
-            result.setdefault(key, []).append(r["country"])
-        return jsonify({"source": "database", "rankings": result})
-    # Fallback: devolver hardcodeados
-    return jsonify({
-        "source": "hardcoded",
-        "rankings": {
-            "Standard_World":    RANKING_STD,
-            "Latin_World":       RANKING_LAT,
-            "Ten Dance_World":   RANKING_TEN,
-            "Standard_Asia":     RANKING_STD_ASIA,
-            "Latin_Asia":        RANKING_LAT_ASIA,
-            "Standard_Americas": RANKING_STD_AMERICAS,
-            "Latin_Americas":    RANKING_LAT_AMERICAS,
-        }
-    })
-
-
-@app.route("/api/rankings", methods=["POST"])
-def update_rankings():
-    """Actualiza un ranking completo en la BD.
-    Body: {discipline: 'Standard'|'Latin'|'Ten Dance',
-           region: 'World'|'Europe'|'Asia'|'Americas'|'Africa',
-           countries: ['Poland','Romania',...]}
-    Esto permite actualizar rankings sin tocar el código fuente.
-    Recarga _DB_RANKINGS en memoria tras guardar."""
-    global _DB_RANKINGS
-    data = request.get_json(silent=True) or {}
-    discipline = data.get("discipline", "").strip()
-    region     = data.get("region", "").strip()
-    countries  = data.get("countries", [])
-
-    if not discipline or not region or not isinstance(countries, list) or not countries:
-        return jsonify({"error": "Se requieren discipline, region y countries (lista)"}), 400
-
-    valid_discs   = {"Standard", "Latin", "Ten Dance"}
-    valid_regions = {"World", "Europe", "Asia", "Americas", "Africa"}
-    if discipline not in valid_discs:
-        return jsonify({"error": f"discipline debe ser uno de: {valid_discs}"}), 400
-    if region not in valid_regions:
-        return jsonify({"error": f"region debe ser uno de: {valid_regions}"}), 400
-
-    conn = get_db()
-    # Reemplazar ranking existente
-    conn.execute("DELETE FROM country_rankings WHERE discipline=? AND region=?", (discipline, region))
-    for i, country in enumerate(countries):
-        conn.execute(
-            "INSERT INTO country_rankings (discipline, region, rank_order, country) VALUES (?,?,?,?)",
-            (discipline, region, i + 1, country.strip())
-        )
-    conn.commit()
-    conn.close()
-
-    # Recargar en memoria
-    _DB_RANKINGS = _load_rankings_from_db()
-
-    return jsonify({"ok": True, "discipline": discipline, "region": region, "n": len(countries)})
-
-
 @app.route("/api/nominations")
 def nominations():
     """Lista todas las nominaciones oficiales WDSF guardadas en la BD."""
     conn = get_db()
+    # Asegurar que la tabla existe
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS official_nominations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wdsf_comp_id INTEGER, comp_name TEXT, comp_date TEXT,
+            comp_discipline TEXT, comp_location TEXT, comp_url TEXT,
+            judge_name TEXT, judge_country TEXT, judge_id INTEGER,
+            role TEXT, status TEXT, section TEXT, position TEXT, synced_at TEXT,
+            UNIQUE(wdsf_comp_id, judge_name, section)
+        )
+    """)
     rows = conn.execute("""
         SELECT n.*, j.first_name, j.last_name, j.representing, j.specialty,
                j.judging_world_championships, j.judging_grand_slams
@@ -2463,6 +2013,9 @@ def nominations():
 def nominations_committed():
     """IDs de jueces en paneles confirmados EN WDSF (adjudicadores ya asignados)."""
     conn = get_db()
+    conn.execute("""CREATE TABLE IF NOT EXISTS official_nominations (
+        id INTEGER PRIMARY KEY, wdsf_comp_id INTEGER, judge_id INTEGER,
+        section TEXT, status TEXT, UNIQUE(wdsf_comp_id, judge_id, section))""")
     rows = conn.execute("""
         SELECT DISTINCT judge_id FROM official_nominations
         WHERE section='adjudicator' AND judge_id IS NOT NULL
@@ -2473,7 +2026,61 @@ def nominations_committed():
 
 # ─── Judge Correlation Analysis ───────────────────────────────────────────────
 
-# (tabla de correlaciones gestionada en init_db())
+def _init_correlation_tables():
+    """Create tables for judge historical correlation analysis."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_marks_history (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            competition_slug TEXT NOT NULL,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            round_num        INTEGER,
+            judge_letter     TEXT,
+            judge_name       TEXT,
+            judge_country    TEXT,
+            couple_num       TEXT,
+            marks_count      INTEGER,
+            scraped_at       TEXT,
+            UNIQUE(competition_slug, round_num, judge_letter, couple_num)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS scraped_competitions (
+            slug             TEXT PRIMARY KEY,
+            competition_name TEXT,
+            competition_date TEXT,
+            discipline       TEXT,
+            n_rounds         INTEGER,
+            n_judges         INTEGER,
+            n_couples        INTEGER,
+            scraped_at       TEXT
+        )
+    """)
+    # Migrate: drop old table if it lacks the discipline column
+    existing_cols = [row[1] for row in conn.execute(
+        "PRAGMA table_info(judge_pair_correlations)"
+    ).fetchall()]
+    if existing_cols and "discipline" not in existing_cols:
+        conn.execute("DROP TABLE judge_pair_correlations")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS judge_pair_correlations (
+            judge_name_a      TEXT NOT NULL,
+            judge_name_b      TEXT NOT NULL,
+            discipline        TEXT NOT NULL DEFAULT 'Unknown',
+            correlation       REAL,
+            n_competitions    INTEGER,
+            n_data_points     INTEGER,
+            last_updated      TEXT,
+            PRIMARY KEY (judge_name_a, judge_name_b, discipline)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+_init_correlation_tables()
 
 
 def _rank_with_ties(lst):

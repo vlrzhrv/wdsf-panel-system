@@ -129,11 +129,9 @@ def find_judge(conn, full_name, country_code):
         "BLR":"Belarus","SWE":"Sweden","FIN":"Finland","SUI":"Switzerland",
         "TUR":"Türkiye","GRE":"Greece","SRB":"Serbia","MKD":"Macedonia",
         "MDA":"Moldova","GEO":"Georgia","AZE":"Azerbaijan","ARM":"Armenia",
-        "CHN":"China, People's Republic of","JPN":"Japan","KOR":"Korea","AUS":"Australia",
+        "CHN":"China","JPN":"Japan","KOR":"Korea","AUS":"Australia",
         "USA":"United States","CAN":"Canada","BRA":"Brazil","ARG":"Argentina",
-        "MEX":"Mexico","ISR":"Israel","VIE":"Vietnam","ECU":"Ecuador",
-        "MLT":"Malta","PHI":"Philippines","MGL":"Mongolia","OIN":"AIN",
-        "TPE":"Chinese Taipei","HKG":"Hong Kong","SGP":"Singapore",
+        "MEX":"Mexico","ISR":"Israel",
     }
     country_full = country_map.get(country_code.upper(), country_code)
 
@@ -149,20 +147,6 @@ def find_judge(conn, full_name, country_code):
         ).fetchall()
         if len(rows) == 1:
             return rows[0]["id"]
-
-    # Estrategia 2: nombres compuestos (3+ partes)
-    # primer token = nombre, resto = apellido compuesto (ej. "Bo Loft Jensen")
-    if len(parts) >= 3:
-        compound_last  = " ".join(parts[1:])
-        compound_first = parts[0]
-        for ln, fn in [(compound_last, compound_first), (compound_first, compound_last)]:
-            rows = conn.execute(
-                "SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? "
-                "AND (UPPER(representing)=? OR UPPER(nationality)=?)",
-                (ln.upper(), fn.upper() + "%", country_full.upper(), country_full.upper())
-            ).fetchall()
-            if len(rows) == 1:
-                return rows[0]["id"]
 
     # Solo apellido + país (si es único)
     for ln in [last, first]:
@@ -351,36 +335,8 @@ def sync():
     print(f"\n  RESUMEN: {total_adj} adjudicadores, {total_nom} nominados, "
           f"{total_matched} emparejados con la BD")
     print(f"  Sincronización completada.\n")
-
-    # Backfill: re-intentar emparejar entradas antiguas con judge_id=NULL
-    # (competiciones pasadas que ya no aparecen en la página WDSF actual)
-    unmatched_rows = conn.execute(
-        "SELECT id, judge_name, judge_country FROM official_nominations WHERE judge_id IS NULL"
-    ).fetchall()
-    backfilled = 0
-    for row in unmatched_rows:
-        jid = find_judge(conn, row["judge_name"], row["judge_country"])
-        if jid:
-            conn.execute("UPDATE official_nominations SET judge_id=? WHERE id=?",
-                         (jid, row["id"]))
-            backfilled += 1
-        else:
-            nm = row["judge_name"] or ""
-            cc = row["judge_country"] or ""
-            cf = {"CZE":"Czechia","DEN":"Denmark","GBR":"United Kingdom","SLO":"Slovenia","SRB":"Serbia","EST":"Estonia","ITA":"Italy","VIE":"Vietnam","CHN":"China, People's Republic of","MLT":"Malta","OIN":"AIN","KOR":"Korea","PHI":"Philippines","MGL":"Mongolia","ECU":"Ecuador"}.get(cc.strip().upper(), cc)
-            parts = nm.strip().split()
-            if len(parts) >= 2:
-                ln, fn = parts[-1], parts[0]
-                r1 = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=? AND UPPER(first_name) LIKE ? AND (UPPER(representing)=? OR UPPER(nationality)=?)",(ln.upper(),fn.upper()+"%",cf.upper(),cf.upper())).fetchall()
-                r2 = conn.execute("SELECT id FROM judges WHERE UPPER(last_name)=?",(ln.upper(),)).fetchall()
-                print(f"    NO MATCH: {repr(nm)} cc={repr(cc)} cf={repr(cf)} s1={len(r1)} lastname_rows={[r[0] for r in r2]}")
-            else:
-                print(f"    NO MATCH (pocas partes): {repr(nm)} cc={repr(cc)}")
-    if backfilled:
-        conn.commit()
-        print(f"  Backfill: {backfilled} entradas históricas emparejadas")
     conn.close()
-    return {"events": len(events), "backfilled": backfilled, "adjudicators": total_adj,
+    return {"events": len(events), "adjudicators": total_adj,
             "nominated": total_nom, "matched": total_matched}
 
 

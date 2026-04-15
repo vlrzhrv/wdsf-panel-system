@@ -654,7 +654,7 @@
       </div>
 
       <!-- Pair matrix -->
-      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">All judge pairs (sorted by similarity ₓ)</div>
+      <div style="font-size:0.85rem;font-weight:600;margin-bottom:0.5rem">All judge pairs (sorted by similarity ↓)</div>
       <div id="div-pair-table" class="table-wrap"></div>
     </div>
   </div>
@@ -742,7 +742,7 @@
         <label>Age Group</label>
         <select id="ev-age">
           <option value="Adult">Adult</option>
-          <option v!lue="Youth">Youth</option>
+          <option value="Youth">Youth</option>
           <option value="Junior">Junior</option>
           <option value="Senior I">Senior I</option>
           <option value="Senior II">Senior II</option>
@@ -1635,7 +1635,7 @@ async function loadExistingPanel() {
               <td style="font-weight:600">${p.judge_a}</td>
               <td style="font-weight:600">${p.judge_b}</td>
               <td style="text-align:center;color:#dc2626;font-weight:700">r = ${p.correlation.toFixed(3)}</td>
-              <td style="text-align:center;color:#6b7280">${p.n_comptitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
+              <td style="text-align:center;color:#6b7280">${p.n_competitions} comp${p.n_competitions !== 1 ? 's' : ''}, ${p.n_data_points} couples</td>
             </tr>`).join('');
           warnDiv.innerHTML = `
             <div class="card" style="border:2px solid #ef4444;">
@@ -2782,8 +2782,7 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
     if (data.error) throw new Error(data.error);
 
     const discBadge = d => d === 'Standard'
-      ? `
-      <span class="disc-badge disc-Standard">🎩 Standard</span>`
+      ? `<span class="disc-badge disc-Standard">🎩 Standard</span>`
       : d === 'Latin'
         ? `<span class="disc-badge disc-Latin">💃 Latin</span>`
         : `<span style="color:#6b7280">${d}</span>`;

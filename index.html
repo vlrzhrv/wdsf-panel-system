@@ -396,7 +396,13 @@
 <div id="page-events" class="page">
   <div class="page-header">
     <div class="page-title">📅 Events</div>
-    <button class="btn btn-primary" onclick="openEventModal()">➕ New Event</button>
+    <div style="display:flex;gap:0.75rem;">
+      <button class="btn btn-outline" onclick="openWDSFSyncModal()" id="wdsf-cal-sync-btn"
+              style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
+        🗓️ Sync WDSF Calendar
+      </button>
+      <button class="btn btn-primary" onclick="openEventModal()">➕ New Event</button>
+    </div>
   </div>
 
   <div class="card">
@@ -783,6 +789,37 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEventModal()">Cancel</button>
       <button class="btn btn-primary" onclick="createEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── WDSF CALENDAR SYNC MODAL ──────────────────────────────────────── -->
+<div id="wdsf-cal-modal" class="modal-overlay">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-title">🗓️ Sync from WDSF Calendar</div>
+    <div id="wdsf-cal-loading" style="text-align:center;padding:2rem;color:var(--gray-500)">
+      ⏳ Fetching upcoming competitions from WDSF...
+    </div>
+    <div id="wdsf-cal-content" style="display:none">
+      <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1rem">
+        Upcoming competitions not yet in your database. Select which ones to import.
+      </p>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+        <button class="btn btn-sm btn-outline" onclick="wdsfCalSelectAll(true)">Select all</button>
+        <button class="btn btn-sm btn-outline" onclick="wdsfCalSelectAll(false)">Deselect all</button>
+        <span id="wdsf-cal-count" style="font-size:0.8rem;color:var(--gray-500);margin-left:auto;align-self:center"></span>
+      </div>
+      <div id="wdsf-cal-list" style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px"></div>
+    </div>
+    <div id="wdsf-cal-empty" style="display:none;text-align:center;padding:2rem;color:var(--gray-500)">
+      ✅ All upcoming WDSF competitions are already in your database.
+    </div>
+    <div id="wdsf-cal-error" style="display:none;padding:1rem;color:#dc2626;background:#fef2f2;border-radius:8px;font-size:0.875rem"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeWDSFSyncModal()">Cancel</button>
+      <button class="btn btn-primary" id="wdsf-cal-import-btn" onclick="importWDSFEvents()" style="display:none">
+        ⬇️ Import Selected
+      </button>
     </div>
   </div>
 </div>
@@ -1307,6 +1344,161 @@ async function loadEvents() {
   } catch(e) {
     toast('Error loading events', 'error');
   }
+}
+
+// ── WDSF Calendar Sync ──────────────────────────────────────────────────────
+let _wdsfCalComps = []; // fetched competitions not yet in DB
+
+async function openWDSFSyncModal() {
+  const modal = document.getElementById('wdsf-cal-modal');
+  modal.classList.add('open');
+  document.getElementById('wdsf-cal-loading').style.display = 'block';
+  document.getElementById('wdsf-cal-content').style.display = 'none';
+  document.getElementById('wdsf-cal-empty').style.display = 'none';
+  document.getElementById('wdsf-cal-error').style.display = 'none';
+  document.getElementById('wdsf-cal-import-btn').style.display = 'none';
+  _wdsfCalComps = [];
+
+  try {
+    // Fetch WDSF upcoming + existing events in parallel
+    const [wdsfRaw, existing] = await Promise.all([
+      fetch(API + '/wdsf/competition?status=Upcoming').then(r => r.json()),
+      fetch(API + '/events').then(r => r.json())
+    ]);
+
+    if (!Array.isArray(wdsfRaw)) throw new Error('WDSF API error: ' + JSON.stringify(wdsfRaw));
+
+    // Build set of existing event names (lowercase) to detect duplicates
+    const existingNames = new Set(existing.map(e => (e.name || '').toLowerCase().trim()));
+
+    // Parse WDSF competitions
+    const parsed = wdsfRaw.map(c => {
+      const raw = c.name || '';
+      // Name format: "Competition Name - YYYY/MM/DD"
+      const lastDash = raw.lastIndexOf(' - ');
+      let compName = raw, compDate = '';
+      if (lastDash !== -1) {
+        const datePart = raw.slice(lastDash + 3).trim(); // "YYYY/MM/DD"
+        if (/^\d{4}\/\d{2}\/\d{2}$/.test(datePart)) {
+          compDate = datePart.replace(/\//g, '-'); // → "YYYY-MM-DD"
+          compName = raw.slice(0, lastDash).trim();
+        }
+      }
+      // Guess discipline from name
+      const upper = compName.toUpperCase();
+      const discipline = upper.includes('LATIN') ? 'Latin'
+                       : upper.includes('STANDARD') ? 'Standard'
+                       : upper.includes('TEN DANCE') || upper.includes('10 DANCE') ? 'Ten Dance'
+                       : '';
+      // Guess event type
+      const eventType = upper.includes('WORLD CHAMPIONSHIP') ? 'WORLD CHAMPIONSHIP'
+                      : upper.includes('GRAND SLAM') ? 'GRAND SLAM'
+                      : upper.includes('EUROPEAN CHAMPIONSHIP') ? 'EUROPEAN CHAMPIONSHIP'
+                      : upper.includes('WORLD CUP') ? 'WORLD CUP'
+                      : upper.includes('CONTINENTAL') ? 'CONTINENTAL'
+                      : 'OTHER';
+      // Guess age group
+      const ageGroup = upper.includes('YOUTH') ? 'Youth'
+                     : upper.includes('JUNIOR') ? 'Junior'
+                     : upper.includes('SENIOR IV') ? 'Senior IV'
+                     : upper.includes('SENIOR III') ? 'Senior III'
+                     : upper.includes('SENIOR II') ? 'Senior II'
+                     : upper.includes('SENIOR I') ? 'Senior I'
+                     : 'Adult';
+      return { wdsfName: raw, name: compName, date: compDate, discipline, eventType, ageGroup, wdsfId: c.id };
+    });
+
+    // Filter out ones already in DB (match by name)
+    _wdsfCalComps = parsed.filter(c => !existingNames.has(c.name.toLowerCase().trim()));
+
+    document.getElementById('wdsf-cal-loading').style.display = 'none';
+
+    if (_wdsfCalComps.length === 0) {
+      document.getElementById('wdsf-cal-empty').style.display = 'block';
+      return;
+    }
+
+    // Render list
+    const list = document.getElementById('wdsf-cal-list');
+    list.innerHTML = _wdsfCalComps.map((c, i) => `
+      <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem 1rem;border-bottom:1px solid #f3f4f6;cursor:pointer;${i % 2 === 0 ? '' : 'background:#f9fafb'}">
+        <input type="checkbox" class="wdsf-cal-cb" data-idx="${i}" checked style="margin-top:0.2rem;flex-shrink:0;width:16px;height:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.875rem;color:#1e293b">${c.name}</div>
+          <div style="font-size:0.775rem;color:var(--gray-500);margin-top:0.2rem">
+            📅 ${c.date || '?'} &nbsp;|&nbsp;
+            ${c.discipline ? '💃 ' + c.discipline + ' &nbsp;|&nbsp; ' : ''}
+            🏆 ${c.eventType} &nbsp;|&nbsp;
+            👥 ${c.ageGroup}
+          </div>
+        </div>
+      </label>`).join('');
+
+    list.querySelectorAll('.wdsf-cal-cb').forEach(cb =>
+      cb.addEventListener('change', updateWDSFCalCount));
+
+    updateWDSFCalCount();
+    document.getElementById('wdsf-cal-content').style.display = 'block';
+    document.getElementById('wdsf-cal-import-btn').style.display = '';
+  } catch(e) {
+    document.getElementById('wdsf-cal-loading').style.display = 'none';
+    const err = document.getElementById('wdsf-cal-error');
+    err.textContent = '⚠️ ' + e.message;
+    err.style.display = 'block';
+  }
+}
+
+function updateWDSFCalCount() {
+  const checked = document.querySelectorAll('.wdsf-cal-cb:checked').length;
+  const total   = _wdsfCalComps.length;
+  document.getElementById('wdsf-cal-count').textContent = `${checked} of ${total} selected`;
+}
+
+function wdsfCalSelectAll(val) {
+  document.querySelectorAll('.wdsf-cal-cb').forEach(cb => cb.checked = val);
+  updateWDSFCalCount();
+}
+
+function closeWDSFSyncModal() {
+  document.getElementById('wdsf-cal-modal').classList.remove('open');
+}
+
+async function importWDSFEvents() {
+  const btn = document.getElementById('wdsf-cal-import-btn');
+  const selected = [...document.querySelectorAll('.wdsf-cal-cb:checked')]
+                     .map(cb => _wdsfCalComps[parseInt(cb.dataset.idx)]);
+  if (!selected.length) { toast('No competitions selected', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Importing...';
+  let ok = 0, fail = 0;
+  for (const c of selected) {
+    try {
+      const res = await fetch(API + '/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:       c.name,
+          date:       c.date,
+          discipline: c.discipline,
+          event_type: c.eventType,
+          age_group:  c.ageGroup,
+          country:    '',
+          location:   '',
+          division:   'General',
+          coefficient: 1,
+          is_ags:     false
+        })
+      });
+      if (res.ok) ok++; else fail++;
+    } catch { fail++; }
+  }
+  btn.disabled = false;
+  btn.textContent = '⬇️ Import Selected';
+  closeWDSFSyncModal();
+  if (ok > 0) toast(`✅ Imported ${ok} competition${ok > 1 ? 's' : ''}${fail ? `, ${fail} failed` : ''}`, 'success');
+  else toast('Import failed', 'error');
+  loadEvents();
 }
 
 function openEventModal() {

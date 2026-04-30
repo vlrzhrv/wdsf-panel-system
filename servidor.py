@@ -1143,7 +1143,8 @@ def _run_wdsf_sync():
 
         import time as _time
         for j in judges:
-            result = _check_judge_license(j["wdsf_min"])
+            full_name = f"{j['first_name']} {j['last_name']}"
+            result = _check_judge_license(j["wdsf_min"], full_name=full_name)
             if result is None:
                 errors.append(f"{j['first_name']} {j['last_name']}: not found in WDSF")
                 continue
@@ -3977,8 +3978,9 @@ def auto_scrape():
 
 
 # ── Judge license checker ──────────────────────────────────────────────────────
-def _check_judge_license(wdsf_min):
+def _check_judge_license(wdsf_min, full_name=None):
     """Fetch WDSF athlete profile and return license status.
+    Tries search by MIN first; if no results, falls back to full_name search.
     Returns dict: {status, division, expires, wdsf_active}
     """
     from bs4 import BeautifulSoup
@@ -3987,12 +3989,22 @@ def _check_judge_license(wdsf_min):
         "Accept": "text/html,*/*",
     }
     try:
-        r = requests.post(
-            "https://www.worlddancesport.org/api/listitems/athletes",
-            json={"name": str(wdsf_min), "page": 1, "pageSize": 3},
-            headers=HEADERS, timeout=15
-        )
-        items = r.json().get("items", [])
+        # Try MIN first, then full name
+        search_terms = [str(wdsf_min)] if wdsf_min else []
+        if full_name:
+            search_terms.append(full_name)
+
+        items = []
+        for term in search_terms:
+            r = requests.post(
+                "https://www.worlddancesport.org/api/listitems/athletes",
+                json={"name": term, "page": 1, "pageSize": 5},
+                headers=HEADERS, timeout=15
+            )
+            items = r.json().get("items", [])
+            if items:
+                break
+
         if not items:
             return None
         url = "https://www.worlddancesport.org" + items[0]["url"]
@@ -4039,7 +4051,8 @@ def _run_license_check_background(judge_rows):
                                    "total": len(judge_rows), "changed": [],
                                    "errors": [], "done": False})
     for j in judge_rows:
-        result = _check_judge_license(j["wdsf_min"])
+        full_name = f"{j['first_name']} {j['last_name']}"
+        result = _check_judge_license(j["wdsf_min"], full_name=full_name)
         if result and "wdsf_active" in result:
             local_active = bool(j["active"])
             wdsf_active  = result["wdsf_active"]

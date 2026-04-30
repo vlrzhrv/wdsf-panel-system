@@ -1575,26 +1575,30 @@ def get_committed_judge_ids(conn, exclude_event_id=None):
     2. Adjudicadores confirmados en la web oficial WDSF (official_nominations)
     Se excluye el propio evento para no bloquearse al reasignar.
     """
-    # 1. Paneles internos
+    # 1. Paneles internos — solo eventos futuros o de hoy
+    today_str = date.today().isoformat()
     q = """
         SELECT DISTINCT pa.judge_id
         FROM panel_assignments pa
         JOIN events e ON pa.event_id = e.id
         WHERE e.status IN ('confirmed', 'sent_for_review', 'officially_nominated')
           AND pa.role != 'reserve'
+          AND (e.date IS NULL OR e.date >= ?)
     """
-    params = []
+    params = [today_str]
     if exclude_event_id:
         q += " AND pa.event_id != ?"
         params.append(exclude_event_id)
     ids = {r[0] for r in conn.execute(q, params).fetchall()}
 
-    # 2. Adjudicadores confirmados en WDSF oficial (si la tabla existe)
+    # 2. Adjudicadores confirmados en WDSF oficial — solo competiciones futuras o de hoy
     try:
+        today = date.today().isoformat()
         wdsf_ids = {r[0] for r in conn.execute("""
             SELECT DISTINCT judge_id FROM official_nominations
             WHERE section='adjudicator' AND judge_id IS NOT NULL
-        """).fetchall()}
+              AND (comp_date IS NULL OR comp_date >= ?)
+        """, (today,)).fetchall()}
         ids |= wdsf_ids
     except Exception:
         pass

@@ -401,6 +401,10 @@
               style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
         🗓️ Sync WDSF Calendar
       </button>
+      <button class="btn btn-outline" onclick="syncNominationsFromEvents()" id="ev-sync-nom-btn"
+              style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
+        🌐 Sync Nominated
+      </button>
       <button class="btn btn-primary" onclick="openEventModal()">➕ New Event</button>
     </div>
   </div>
@@ -1386,6 +1390,26 @@ async function loadEvents() {
     }).join('');
   } catch(e) {
     toast('Error loading events', 'error');
+  }
+}
+
+// ── Sync Nominated Officials from Events page ────────────────────────────────
+async function syncNominationsFromEvents() {
+  const btn = document.getElementById('ev-sync-nom-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Syncing…';
+  try {
+    const res  = await fetch(API + '/sync_nominations', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error');
+    const upgraded = data.events_upgraded || data.events || 0;
+    toast(`✅ Sync complete — ${upgraded} event${upgraded !== 1 ? 's' : ''} marked as officially nominated`, 'success');
+    loadEvents();
+  } catch(e) {
+    toast('Sync error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🌐 Sync Nominated';
   }
 }
 

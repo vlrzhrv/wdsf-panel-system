@@ -2301,7 +2301,10 @@ def sync_nominations():
             capture_output=True, text=True, timeout=300
         )
         output = result.stdout + result.stderr
-        return jsonify({"ok": True, "output": output[-3000:]})
+        # Count how many events were upgraded
+        import re as _re
+        upgraded = len(_re.findall(r"officially_nominated", output))
+        return jsonify({"ok": True, "output": output[-3000:], "events_upgraded": upgraded})
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Timeout (>5 min)"}), 500
     except Exception as e:

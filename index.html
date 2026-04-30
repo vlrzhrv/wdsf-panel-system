@@ -423,7 +423,7 @@
     <div class="card-title">⚙️ Configure Assignment</div>
     <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
       <div class="form-group">
-        <label>Select Event</label>
+        <label>Select Event &nbsp;<button id="assign-show-past-btn" class="btn btn-sm btn-outline" style="font-size:0.7rem;padding:0.15rem 0.5rem;" onclick="toggleAssignPast(this)">Show past (0)</button></label>
         <select id="assign-event" style="min-width:380px;" onchange="onEventSelected()">
           <option value="">— Select an event —</option>
         </select>
@@ -1279,10 +1279,16 @@ async function loadEvents() {
       tbody.innerHTML = '<tr><td colspan="10"><div class="empty-state"><div class="icon">📅</div>No events. Create a new one.</div></td></tr>';
       return;
     }
-    tbody.innerHTML = events.map(e => `
-      <tr>
+    const today = new Date().toISOString().slice(0, 10);
+    const upcoming = events.filter(e => !e.date || e.date >= today);
+    const past     = events.filter(e => e.date && e.date < today);
+    const sorted   = [...upcoming, ...past];
+    tbody.innerHTML = sorted.map(e => {
+      const isPast = e.date && e.date < today;
+      return `
+      <tr style="${isPast ? 'opacity:0.45;' : ''}">
         <td class="text-muted">${e.id}</td>
-        <td><strong>${e.name}</strong></td>
+        <td><strong>${e.name}</strong>${isPast ? ' <span style="font-size:0.65rem;color:#9ca3af">(past)</span>' : ''}</td>
         <td>${e.date || '—'}</td>
         <td>${e.country || '—'}</td>
         <td>${e.discipline || '—'}</td>
@@ -1292,11 +1298,12 @@ async function loadEvents() {
         <td>${statusBadge(e.status)}</td>
         <td>
           <div class="gap-2">
-            <button class="btn btn-sm btn-success" onclick="goAssign(${e.id})">🎯 Assign</button>
+            ${isPast ? '' : `<button class="btn btn-sm btn-success" onclick="goAssign(${e.id})">🎯 Assign</button>`}
             <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id}, '${e.name.replace(/'/g,"\\'")}')">🗑</button>
           </div>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   } catch(e) {
     toast('Error loading events', 'error');
   }
@@ -1381,23 +1388,35 @@ async function reopenFromDash(id) {
 // Almacena los datos de eventos para consulta rápida
 let allEventsCache = [];
 
-async function loadAssignEvents() {
+async function loadAssignEvents(showPast = false) {
   const sel = document.getElementById('assign-event');
   try {
     allEventsCache = await fetch(API + '/events').then(r => r.json());
     const HAS_PANEL = ['assigned','confirmed','sent_for_review'];
     const today = new Date().toISOString().slice(0, 10);
+    const upcoming = allEventsCache.filter(e => !e.date || e.date >= today);
+    const past     = allEventsCache.filter(e => e.date && e.date < today);
+    const toShow   = showPast ? allEventsCache : upcoming;
     sel.innerHTML = '<option value="">— Select an event —</option>' +
-      allEventsCache.map(e => {
+      toShow.map(e => {
         const hasPanelMark = HAS_PANEL.includes(e.status) ? ' ✓' : '';
-        const isPast   = e.date && e.date < today;
-        const noDate   = !e.date;
-        const warn     = isPast ? ' ⚠️ past' : noDate ? ' ⚠️ no date' : '';
-        return `<option value="${e.id}" data-status="${e.status}" ${isPast||noDate ? 'style="color:#b45309"' : ''}>${e.name} (${e.date || '?'})${hasPanelMark}${warn}</option>`;
+        const isPast = e.date && e.date < today;
+        return `<option value="${e.id}" data-status="${e.status}" ${isPast ? 'style="color:#9ca3af"' : ''}>${e.name} (${e.date || '?'})${hasPanelMark}${isPast ? ' (past)' : ''}</option>`;
       }).join('');
+    // Update toggle label
+    const toggle = document.getElementById('assign-show-past-btn');
+    if (toggle) toggle.textContent = showPast
+      ? `Hide past (${past.length})`
+      : `Show past (${past.length})`;
   } catch(e) {
     toast('Error loading events', 'error');
   }
+}
+
+let _assignShowPast = false;
+function toggleAssignPast(btn) {
+  _assignShowPast = !_assignShowPast;
+  loadAssignEvents(_assignShowPast);
 }
 
 function onEventSelected() {

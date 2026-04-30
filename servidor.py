@@ -1129,7 +1129,7 @@ def judge(jid):
 # ── WDSF status sync ────────────────────────────────────────────────────────
 
 def _run_wdsf_sync():
-    """Background thread: check WDSF API for each judge and update active status."""
+    """Background thread: check each judge's license via worlddancesport.org web scrape."""
     _sync_state["running"] = True
     try:
         conn = get_db()
@@ -1141,56 +1141,40 @@ def _run_wdsf_sync():
         changed, errors, checked = [], [], 0
         today = date.today().isoformat()
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time as _time
+        for j in judges:
+            result = _check_judge_license(j["wdsf_min"])
+            if result is None:
+                errors.append(f"{j['first_name']} {j['last_name']}: not found in WDSF")
+                continue
+            if "error" in result:
+                errors.append(f"{j['first_name']} {j['last_name']}: {result['error'][:80]}")
+                continue
 
-        def _check_one(j):
-            try:
-                resp = requests.get(
-                    f"{WDSF_BASE}/adjudicator/{j['wdsf_min']}",
-                    auth=HTTPBasicAuth(WDSF_USER, WDSF_PASS),
-                    timeout=10,
-                    headers={"Accept": "application/json"}
+            checked += 1
+            should_active = result.get("wdsf_active", False)
+            was_active = bool(j["active"])
+
+            if was_active != should_active:
+                status  = result.get("status", "?")
+                expires = result.get("expires", "n/a") or "n/a"
+                reason  = "" if should_active else (
+                    f"WDSF sync {today}: status={status}, expires={expires}"
                 )
-                if resp.status_code != 200:
-                    return None, f"{j['first_name']} {j['last_name']}: HTTP {resp.status_code}"
-                data = resp.json()
-                lic_type  = (data.get("licenseType") or "").strip()
-                lic_valid = (data.get("licenseValidUntil") or "").strip()[:10]
-                # Active = has a license type AND (no expiry date OR expiry is today or future)
-                should_active = bool(lic_type) and (not lic_valid or lic_valid >= today)
-                return {"j": j, "should_active": should_active,
-                        "lic_type": lic_type, "lic_valid": lic_valid}, None
-            except Exception as ex:
-                return None, f"{j['first_name']} {j['last_name']}: {str(ex)[:60]}"
-
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            futures = {pool.submit(_check_one, j): j for j in judges}
-            for future in as_completed(futures):
-                result, err = future.result()
-                if err:
-                    errors.append(err)
-                    continue
-                if result is None:
-                    continue
-                checked += 1
-                j, should_active = result["j"], result["should_active"]
-                lic_type, lic_valid = result["lic_type"], result["lic_valid"]
-                was_active = bool(j["active"])
-                if was_active != should_active:
-                    reason = "" if should_active else (
-                        f"WDSF sync {today}: lic={lic_type or 'none'}, valid_until={lic_valid or 'n/a'}"
-                    )
-                    c = get_db()
-                    c.execute("UPDATE judges SET active=?, notes=? WHERE id=?",
-                              (1 if should_active else 0, reason if not should_active else None, j["id"]))
-                    c.commit()
-                    c.close()
-                    changed.append({
-                        "name": f"{j['first_name']} {j['last_name']}",
-                        "was": "Active" if was_active else "Inactive",
-                        "now": "Active" if should_active else "Inactive",
-                        "reason": reason
-                    })
+                c = get_db()
+                c.execute("UPDATE judges SET active=?, notes=? WHERE id=?",
+                          (1 if should_active else 0,
+                           reason if not should_active else None,
+                           j["id"]))
+                c.commit()
+                c.close()
+                changed.append({
+                    "name": f"{j['first_name']} {j['last_name']}",
+                    "was":  "Active" if was_active else "Inactive",
+                    "now":  "Active" if should_active else "Inactive",
+                    "reason": reason
+                })
+            _time.sleep(0.3)   # be polite to WDSF servers
 
         _sync_state["last_result"] = {
             "checked": checked, "changed": changed,

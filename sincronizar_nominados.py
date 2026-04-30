@@ -163,6 +163,12 @@ def find_judge(conn, full_name, country_code):
 def upsert_nomination(conn, comp_id, comp_name, comp_date, discipline,
                       location, comp_url, name, country, judge_id,
                       role, status, section, position):
+    # If judge moves from 'nominated' → 'adjudicator', remove the old nominated row
+    if section == 'adjudicator':
+        conn.execute("""
+            DELETE FROM official_nominations
+            WHERE wdsf_comp_id=? AND judge_name=? AND section='nominated'
+        """, (comp_id, name))
     conn.execute("""
         INSERT INTO official_nominations
             (wdsf_comp_id, comp_name, comp_date, comp_discipline, comp_location, comp_url,

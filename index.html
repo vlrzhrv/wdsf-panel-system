@@ -2236,7 +2236,13 @@ async function loadNominations() {
     if (lastSync) document.getElementById('nom-last-sync').textContent =
       'Last sync: ' + lastSync.replace('T',' ').slice(0,16);
 
-    container.innerHTML = data.map(comp => {
+    // Sort: upcoming first (ascending), then past (descending)
+    const today = new Date().toISOString().split('T')[0];
+    const upcoming = data.filter(c => (c.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    const past     = data.filter(c => (c.date||'') <  today).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    const sorted   = [...upcoming, ...past];
+
+    container.innerHTML = sorted.map(comp => {
       const adjRows = comp.adjudicators.map((j, i) => `
         <tr style="${j.matched ? '' : 'opacity:0.6'}">
           <td><span class="badge" style="background:#d1fae5;color:#065f46;font-size:0.7rem">${j.position||String.fromCharCode(65+i)}</span></td>

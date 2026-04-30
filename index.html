@@ -1433,15 +1433,14 @@ async function openWDSFSyncModal() {
                        : upper.includes('STANDARD') ? 'Standard'
                        : upper.includes('TEN DANCE') || upper.includes('10 DANCE') ? 'Ten Dance'
                        : '';
-      // Guess event type (only Title Events and Grand Slams are imported)
+      // Guess event type
       const eventType = upper.includes('WORLD CHAMPIONSHIP') ? 'WORLD CHAMPIONSHIP'
                       : upper.includes('GRAND SLAM') ? 'GRAND SLAM'
                       : upper.includes('EUROPEAN CHAMPIONSHIP') ? 'EUROPEAN CHAMPIONSHIP'
                       : upper.includes('WORLD CUP') ? 'WORLD CUP'
                       : upper.includes('CONTINENTAL') ? 'CONTINENTAL'
+                      : upper.includes('OPEN') ? 'OPEN'
                       : 'OTHER';
-      // Skip non-Title, non-Grand Slam events
-      if (eventType === 'OTHER') return null;
       // Guess age group
       const ageGroup = upper.includes('YOUTH') ? 'Youth'
                      : upper.includes('JUNIOR') ? 'Junior'
@@ -1451,7 +1450,7 @@ async function openWDSFSyncModal() {
                      : upper.includes('SENIOR I') ? 'Senior I'
                      : 'Adult';
       return { wdsfName: raw, name: compName, date: compDate, discipline, eventType, ageGroup, wdsfId: c.id };
-    }).filter(Boolean); // nulls = OTHER type, skipped
+    });
 
     // Filter out ones already in DB (match by name)
     _wdsfCalComps = parsed.filter(c => !existingNames.has(c.name.toLowerCase().trim()));

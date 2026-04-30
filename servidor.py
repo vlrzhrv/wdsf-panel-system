@@ -489,8 +489,65 @@ def _judge_display_name(j):
     return f"{last} {first}".strip() if last else first
 
 
+def get_judge_workload_last_year(conn):
+    """
+    Returns {judge_id: {'title': N, 'other': N}} for the last 12 months.
+    Title events: World/European/Continental Championship, Grand Slam, World Cup.
+    Sources: official_nominations (WDSF) + internal confirmed panels.
+    """
+    from datetime import timedelta
+    cutoff  = (date.today() - timedelta(days=365)).isoformat()
+    today_s = date.today().isoformat()
+    TITLE_KW = ['WORLD CHAMPIONSHIP', 'EUROPEAN CHAMPIONSHIP', 'CONTINENTAL',
+                'GRAND SLAM', 'WORLD CUP']
+
+    workload = {}  # {judge_id: {'title': 0, 'other': 0}}
+
+    def _add(jid, is_title):
+        if jid not in workload:
+            workload[jid] = {'title': 0, 'other': 0}
+        if is_title:
+            workload[jid]['title'] += 1
+        else:
+            workload[jid]['other'] += 1
+
+    # 1. Official WDSF nominations (past year, section=adjudicator, past events only)
+    try:
+        rows = conn.execute("""
+            SELECT judge_id, comp_name, comp_date
+            FROM official_nominations
+            WHERE judge_id IS NOT NULL AND section='adjudicator'
+              AND comp_date IS NOT NULL AND comp_date >= ? AND comp_date <= ?
+            GROUP BY judge_id, comp_name
+        """, (cutoff, today_s)).fetchall()
+        for r in rows:
+            name_up = (r['comp_name'] or '').upper()
+            _add(r['judge_id'], any(kw in name_up for kw in TITLE_KW))
+    except Exception:
+        pass
+
+    # 2. Internal confirmed panels (past events only)
+    try:
+        rows2 = conn.execute("""
+            SELECT pa.judge_id, e.event_type
+            FROM panel_assignments pa
+            JOIN events e ON pa.event_id = e.id
+            WHERE pa.role != 'reserve'
+              AND e.status IN ('confirmed','sent_for_review','officially_nominated')
+              AND e.date IS NOT NULL AND e.date >= ? AND e.date <= ?
+        """, (cutoff, today_s)).fetchall()
+        for r in rows2:
+            etype = (r['event_type'] or '').upper()
+            _add(r['judge_id'], etype in ('WORLD CHAMPIONSHIP','EUROPEAN CHAMPIONSHIP',
+                                          'CONTINENTAL','GRAND SLAM','WORLD CUP'))
+    except Exception:
+        pass
+
+    return workload
+
+
 def calc_score(j, event, assigned_zones, return_breakdown=False,
-               assigned_panel_names=None, corr_map=None):
+               assigned_panel_names=None, corr_map=None, workload=None):
     score = 0
     discipline = (event.get("discipline") or "Standard")
     breakdown  = {}
@@ -637,6 +694,43 @@ def calc_score(j, event, assigned_zones, return_breakdown=False,
             ind_label = "No shared competitions with current panel"
     score += f
     breakdown["independence"] = {"pts": f, "max": 15, "detail": ind_label}
+
+    # G. Workload — max 2 title events or 3 other events in last 12 months
+    MAX_TITLE = 2
+    MAX_OTHER = 3
+    g = 0
+    g_label = "No workload data"
+    if workload is not None:
+        w = workload.get(j.get("id"), {'title': 0, 'other': 0})
+        n_title = w['title']
+        n_other = w['other']
+        event_type_upper = (event.get('event_type') or '').upper()
+        is_title_event = event_type_upper in ('WORLD CHAMPIONSHIP', 'EUROPEAN CHAMPIONSHIP',
+                                              'CONTINENTAL', 'GRAND SLAM', 'WORLD CUP')
+        if is_title_event:
+            if n_title >= MAX_TITLE:
+                g = -30
+                g_label = f"⚠️ AT LIMIT: {n_title}/{MAX_TITLE} title events this year"
+            elif n_title == MAX_TITLE - 1:
+                g = -10
+                g_label = f"🔶 Near limit: {n_title}/{MAX_TITLE} title events this year"
+            else:
+                g = 5 if n_title == 0 else 0
+                g_label = f"✅ {n_title}/{MAX_TITLE} title events this year"
+        else:
+            if n_other >= MAX_OTHER:
+                g = -30
+                g_label = f"⚠️ AT LIMIT: {n_other}/{MAX_OTHER} other events this year"
+            elif n_other == MAX_OTHER - 1:
+                g = -10
+                g_label = f"🔶 Near limit: {n_other}/{MAX_OTHER} other events this year"
+            else:
+                g = 5 if n_other == 0 else 0
+                g_label = f"✅ {n_other}/{MAX_OTHER} other events this year"
+        score += g
+        breakdown["workload"] = {"pts": g, "max": 5, "detail": g_label}
+    else:
+        breakdown["workload"] = {"pts": 0, "max": 5, "detail": "Workload not loaded"}
 
     score = round(score, 2)
     if return_breakdown:
@@ -1771,6 +1865,9 @@ def assign(eid):
     # Filter by valid license
     valid = [j for j in cands if not j.get("license_valid_until") or j["license_valid_until"] >= today]
 
+    # Pre-load workload data (criterion G)
+    workload_map = get_judge_workload_last_year(conn)
+
     # Pre-load judge correlation map for criterion F — filtered by discipline
     corr_map = {}
     try:
@@ -1828,7 +1925,8 @@ def assign(eid):
         for j in pool:
             j["score"], j["score_breakdown"] = calc_score(
                 j, event, used_zones, return_breakdown=True,
-                assigned_panel_names=pnames, corr_map=corr_map)
+                assigned_panel_names=pnames, corr_map=corr_map,
+                workload=workload_map)
         pool.sort(key=lambda x: x["score"], reverse=True)
 
     # Score non-host judges (initial scoring, no panel context yet)

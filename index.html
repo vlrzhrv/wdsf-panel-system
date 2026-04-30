@@ -590,6 +590,9 @@
       <button class="btn btn-primary" onclick="computeCorrelations()" id="btn-compute">
         🔬 Compute / Update Correlations
       </button>
+      <button class="btn btn-success" onclick="openFindNewComps()" id="btn-find-new">
+        🔍 Find New Competitions
+      </button>
       <button class="btn btn-secondary" onclick="rescrapeAll()" id="btn-rescrape-all"
               title="Re-fetch all competitions with the latest parsing code (picks up finals from World Open competitions)">
         🔄 Re-scrape All Competitions
@@ -597,7 +600,7 @@
       <span id="hist-compute-result" style="font-size:0.85rem;color:var(--gray-500)"></span>
     </div>
     <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--gray-500)">
-      Run after scraping new competitions to update Criterion F scores. Use "Re-scrape All" after a server update to refresh final-round data.
+      Use <strong>Find New Competitions</strong> to auto-discover and batch-scrape new WDSF events. Then Compute Correlations to update Criterion F.
     </div>
     <div id="rescrape-all-result" style="margin-top:0.75rem"></div>
   </div>
@@ -789,6 +792,46 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEventModal()">Cancel</button>
       <button class="btn btn-primary" onclick="createEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── FIND NEW COMPETITIONS MODAL ───────────────────────────────────────── -->
+<div id="new-comps-modal" class="modal-overlay">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-title">🔍 Find New Competitions</div>
+    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+      <label style="font-size:0.85rem;font-weight:600">Year:</label>
+      <select id="new-comps-year" style="padding:0.35rem 0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem">
+        <option value="2026">2026</option>
+        <option value="2025">2025</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="fetchNewComps()" id="btn-fetch-new-comps" style="font-size:0.82rem">
+        🔄 Fetch from WDSF
+      </button>
+      <span id="new-comps-status" style="font-size:0.82rem;color:var(--gray-500)"></span>
+    </div>
+    <div id="new-comps-loading" style="display:none;text-align:center;padding:1.5rem;color:var(--gray-500)">
+      ⏳ Querying WDSF API (may take ~20 seconds)...
+    </div>
+    <div id="new-comps-content" style="display:none">
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;align-items:center">
+        <button class="btn btn-sm btn-outline" onclick="newCompsSelectAll(true)">Select all</button>
+        <button class="btn btn-sm btn-outline" onclick="newCompsSelectAll(false)">Deselect all</button>
+        <span id="new-comps-count" style="font-size:0.8rem;color:var(--gray-500);margin-left:auto"></span>
+      </div>
+      <div id="new-comps-list" style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px"></div>
+      <div id="new-comps-scrape-log" style="margin-top:0.75rem;max-height:120px;overflow-y:auto;font-size:0.78rem;font-family:monospace;background:#f8fafc;border-radius:6px;padding:0.5rem;display:none"></div>
+    </div>
+    <div id="new-comps-empty" style="display:none;text-align:center;padding:2rem;color:var(--gray-500)">
+      ✅ All competitions for this year are already scraped.
+    </div>
+    <div id="new-comps-error" style="display:none;padding:1rem;color:#dc2626;background:#fef2f2;border-radius:8px;font-size:0.875rem"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeNewCompsModal()">Close</button>
+      <button class="btn btn-primary" id="btn-scrape-selected" onclick="scrapeSelectedComps()" style="display:none">
+        📥 Scrape Selected
+      </button>
     </div>
   </div>
 </div>
@@ -1390,13 +1433,15 @@ async function openWDSFSyncModal() {
                        : upper.includes('STANDARD') ? 'Standard'
                        : upper.includes('TEN DANCE') || upper.includes('10 DANCE') ? 'Ten Dance'
                        : '';
-      // Guess event type
+      // Guess event type (only Title Events and Grand Slams are imported)
       const eventType = upper.includes('WORLD CHAMPIONSHIP') ? 'WORLD CHAMPIONSHIP'
                       : upper.includes('GRAND SLAM') ? 'GRAND SLAM'
                       : upper.includes('EUROPEAN CHAMPIONSHIP') ? 'EUROPEAN CHAMPIONSHIP'
                       : upper.includes('WORLD CUP') ? 'WORLD CUP'
                       : upper.includes('CONTINENTAL') ? 'CONTINENTAL'
                       : 'OTHER';
+      // Skip non-Title, non-Grand Slam events
+      if (eventType === 'OTHER') return null;
       // Guess age group
       const ageGroup = upper.includes('YOUTH') ? 'Youth'
                      : upper.includes('JUNIOR') ? 'Junior'
@@ -1406,7 +1451,7 @@ async function openWDSFSyncModal() {
                      : upper.includes('SENIOR I') ? 'Senior I'
                      : 'Adult';
       return { wdsfName: raw, name: compName, date: compDate, discipline, eventType, ageGroup, wdsfId: c.id };
-    });
+    }).filter(Boolean); // nulls = OTHER type, skipped
 
     // Filter out ones already in DB (match by name)
     _wdsfCalComps = parsed.filter(c => !existingNames.has(c.name.toLowerCase().trim()));
@@ -2816,6 +2861,145 @@ document.addEventListener('DOMContentLoaded', () => {
   if (discSel) { discSel.addEventListener('change', _refreshDiversityJudgeList); _refreshDiversityJudgeList(); }
 });
 
+
+// ── Find New Competitions (batch scrape) ──────────────────────────────────
+let _newCompsData = [];
+
+function openFindNewComps() {
+  const modal = document.getElementById('new-comps-modal');
+  modal.classList.add('open');
+  // Reset UI
+  ['new-comps-loading','new-comps-content','new-comps-empty','new-comps-error'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+  document.getElementById('btn-scrape-selected').style.display = 'none';
+  document.getElementById('new-comps-status').textContent = '';
+  document.getElementById('new-comps-scrape-log').style.display = 'none';
+  _newCompsData = [];
+}
+function closeNewCompsModal() {
+  document.getElementById('new-comps-modal').classList.remove('open');
+}
+
+async function fetchNewComps() {
+  const year = document.getElementById('new-comps-year').value;
+  const btn  = document.getElementById('btn-fetch-new-comps');
+  btn.disabled = true;
+  ['new-comps-content','new-comps-empty','new-comps-error'].forEach(id =>
+    document.getElementById(id).style.display = 'none');
+  document.getElementById('btn-scrape-selected').style.display = 'none';
+  document.getElementById('new-comps-scrape-log').style.display = 'none';
+  document.getElementById('new-comps-loading').style.display = 'block';
+  document.getElementById('new-comps-status').textContent = '';
+
+  try {
+    const res  = await fetch(API + '/list-wdsf-competitions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ year: parseInt(year) })
+    });
+    const data = await res.json();
+    document.getElementById('new-comps-loading').style.display = 'none';
+
+    if (!data.ok) throw new Error(data.error || JSON.stringify(data));
+
+    // Only show not-yet-scraped
+    _newCompsData = (data.results || []).filter(c => !c.already_scraped);
+    document.getElementById('new-comps-status').textContent =
+      `${data.total} found · ${_newCompsData.length} new · ${(data.results||[]).length - _newCompsData.length} already scraped`;
+
+    if (_newCompsData.length === 0) {
+      document.getElementById('new-comps-empty').style.display = 'block';
+      return;
+    }
+
+    const list = document.getElementById('new-comps-list');
+    list.innerHTML = _newCompsData.map((c, i) => {
+      // Extract date from name "Name - YYYY/MM/DD"
+      const lastDash = c.name.lastIndexOf(' - ');
+      const datePart = lastDash !== -1 ? c.name.slice(lastDash + 3).trim() : '';
+      const dispName = lastDash !== -1 ? c.name.slice(0, lastDash).trim() : c.name;
+      return `
+      <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 1rem;border-bottom:1px solid #f3f4f6;cursor:pointer;${i%2===0?'':'background:#f9fafb'}">
+        <input type="checkbox" class="new-comp-cb" data-idx="${i}" checked style="margin-top:0.2rem;flex-shrink:0;width:16px;height:16px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.85rem;color:#1e293b">${dispName}</div>
+          <div style="font-size:0.76rem;color:var(--gray-500);margin-top:0.15rem">
+            📅 ${datePart || '?'} &nbsp;|&nbsp; <code style="font-size:0.72rem">${c.slug}</code>
+          </div>
+        </div>
+      </label>`;
+    }).join('');
+
+    list.querySelectorAll('.new-comp-cb').forEach(cb =>
+      cb.addEventListener('change', updateNewCompsCount));
+    updateNewCompsCount();
+
+    document.getElementById('new-comps-content').style.display = 'block';
+    document.getElementById('btn-scrape-selected').style.display = '';
+  } catch(e) {
+    document.getElementById('new-comps-loading').style.display = 'none';
+    const err = document.getElementById('new-comps-error');
+    err.textContent = '⚠️ ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function updateNewCompsCount() {
+  const checked = document.querySelectorAll('.new-comp-cb:checked').length;
+  document.getElementById('new-comps-count').textContent = `${checked} of ${_newCompsData.length} selected`;
+}
+function newCompsSelectAll(val) {
+  document.querySelectorAll('.new-comp-cb').forEach(cb => cb.checked = val);
+  updateNewCompsCount();
+}
+
+async function scrapeSelectedComps() {
+  const selected = [...document.querySelectorAll('.new-comp-cb:checked')]
+                     .map(cb => _newCompsData[parseInt(cb.dataset.idx)]);
+  if (!selected.length) { toast('No competitions selected', 'error'); return; }
+
+  const btn = document.getElementById('btn-scrape-selected');
+  const log = document.getElementById('new-comps-scrape-log');
+  btn.disabled = true;
+  log.style.display = 'block';
+  log.innerHTML = `<div style="color:#6b7280">Starting batch scrape of ${selected.length} competitions…</div>`;
+
+  let ok = 0, fail = 0;
+  for (const c of selected) {
+    const dispName = c.name.includes(' - ') ? c.name.slice(0, c.name.lastIndexOf(' - ')).trim() : c.name;
+    log.innerHTML += `<div style="color:#6b7280">⏳ ${dispName}…</div>`;
+    log.scrollTop = log.scrollHeight;
+    try {
+      const res  = await fetch(API + '/correlations/scrape', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ slug: c.slug })
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        ok++;
+        log.innerHTML += `<div style="color:#059669">✅ ${dispName} — ${data.n_rounds||'?'} rounds, ${data.n_judges||'?'} judges</div>`;
+      } else {
+        fail++;
+        log.innerHTML += `<div style="color:#dc2626">❌ ${dispName} — ${data.error || 'error'}</div>`;
+      }
+    } catch(e) {
+      fail++;
+      log.innerHTML += `<div style="color:#dc2626">❌ ${dispName} — ${e.message}</div>`;
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+
+  log.innerHTML += `<div style="color:#374151;font-weight:600;margin-top:0.4rem">Done: ${ok} scraped, ${fail} failed.</div>`;
+  btn.disabled = false;
+  btn.textContent = '✅ Done — Scrape More?';
+  if (ok > 0) {
+    toast(`✅ Scraped ${ok} competition${ok>1?'s':''}`, 'success');
+    await loadCorrelations();
+  }
+}
 
 async function rescrapeAll() {
   const btn = document.getElementById('btn-rescrape-all');

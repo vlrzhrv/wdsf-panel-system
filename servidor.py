@@ -4502,27 +4502,109 @@ def integrity_analyze():
     data = request.json or {}
     slug  = data.get("slug", "GrandSlam-Blackpool-Adult-Latin-65352").strip()
     force = bool(data.get("force", False))
+    scrape_log = []
 
-    # ── Lazy-load the analysis module ────────────────────────────────────────
-    spec = _ilu.spec_from_file_location("analizar_integridad",
-                                         os.path.join(APP_DIR, "analizar_integridad.py"))
-    mod  = _ilu.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
+    # ── Ensure competition_round_marks table exists ───────────────────────────
     conn = get_db()
-    mod.ensure_tables(conn)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_round_marks (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug             TEXT    NOT NULL,
+            round_num        INTEGER NOT NULL,
+            judge_letter     TEXT    NOT NULL,
+            judge_name       TEXT,
+            couple_num       TEXT    NOT NULL,
+            marks_count      INTEGER,
+            total_dances     INTEGER,
+            scraped_at       TEXT,
+            UNIQUE(slug, round_num, judge_letter, couple_num)
+        )
+    """)
+    conn.commit()
 
     existing = conn.execute(
         "SELECT COUNT(*) FROM competition_round_marks WHERE slug=?", (slug,)
     ).fetchone()[0]
 
     judge_names = {}
+    scrape_log  = []
+
     if force or existing == 0:
-        judge_names, marks = mod.scrape_marks_detailed(slug)
-        if not marks:
+        # ── Try /Competitions/Marks/ first (raw ★/✓ per dance) ───────────────
+        marks_url = f"https://www.worlddancesport.org/Competitions/Marks/{slug}"
+        scrape_log.append(f"Trying Marks URL: {marks_url}")
+        try:
+            mr = requests.get(marks_url, timeout=25,
+                              headers={"User-Agent": "Mozilla/5.0 WDSF-PanelSystem/1.0"})
+            scrape_log.append(f"Marks HTTP {mr.status_code}, length {len(mr.text)}")
+            if mr.status_code == 200:
+                raw_marks = _scrape_marks_page(slug)
+                scrape_log.append(f"_scrape_marks_page returned {len(raw_marks)} rows")
+            else:
+                raw_marks = []
+        except Exception as e:
+            scrape_log.append(f"Marks fetch error: {e}")
+            raw_marks = []
+
+        # ── Fallback: /Competitions/Scores/ (numeric scores per judge/round) ──
+        if not raw_marks:
+            scrape_log.append(f"Falling back to Scores page")
+            try:
+                officials_map = {}
+                try:
+                    officials_map = _scrape_officials_page(slug)
+                    if not judge_names:
+                        for ltr, info in officials_map.items():
+                            judge_names[ltr] = info.get("name", ltr)
+                    scrape_log.append(f"Officials loaded: {len(officials_map)} entries")
+                except Exception as oe:
+                    scrape_log.append(f"Officials error: {oe}")
+
+                raw_marks = _scrape_scores_page(slug, officials=officials_map)
+                scrape_log.append(f"_scrape_scores_page returned {len(raw_marks)} rows")
+                # raw_marks from _scrape_scores_page: [{round_num, couple, judge_letter, marks_count}]
+                # marks_count is int(score*100) — fine for analysis
+            except Exception as e:
+                scrape_log.append(f"Scores fetch error: {e}")
+                raw_marks = []
+
+        if not raw_marks:
             conn.close()
-            return jsonify({"ok": False, "error": "Could not scrape marks page", "slug": slug}), 422
-        mod.save_marks(conn, slug, judge_names, marks)
+            return jsonify({
+                "ok":     False,
+                "error":  "Could not scrape marks — see debug_log for details",
+                "debug_log": scrape_log,
+                "slug":   slug,
+            }), 422
+
+        # ── Fetch judge names from Officials page ─────────────────────────────
+        try:
+            officials = _scrape_officials_page(slug)
+            for ltr, info in officials.items():
+                judge_names[ltr] = info.get("name", ltr)
+            scrape_log.append(f"Officials: {len(judge_names)} names")
+        except Exception as e:
+            scrape_log.append(f"Officials fetch error: {e}")
+
+        # ── Save to DB ────────────────────────────────────────────────────────
+        now = datetime.utcnow().isoformat()
+        conn.execute("DELETE FROM competition_round_marks WHERE slug=?", (slug,))
+        for m in raw_marks:
+            jltr = m["judge_letter"]
+            couple_val = m.get("couple", m.get("couple_num", "?"))
+            conn.execute("""
+                INSERT OR REPLACE INTO competition_round_marks
+                    (slug, round_num, judge_letter, judge_name, couple_num,
+                     marks_count, total_dances, scraped_at)
+                VALUES (?,?,?,?,?,?,?,?)
+            """, (slug, m["round_num"], jltr,
+                  judge_names.get(jltr),
+                  str(couple_val),
+                  m["marks_count"],
+                  m.get("total_dances", 1),
+                  now))
+        conn.commit()
+        scrape_log.append(f"Saved {len(raw_marks)} rows")
     else:
         rows = conn.execute(
             "SELECT DISTINCT judge_letter, judge_name FROM competition_round_marks "
@@ -4651,6 +4733,7 @@ def integrity_analyze():
         "suspicious_events": suspicious[:200],
         "corr_pairs": sorted(corr_pairs, key=lambda x: -x["r"])[:30],
         "suspicion_index": suspicion_index,
+        "debug_log": scrape_log if scrape_log else ["Used cached DB data"],
     })
 
 

@@ -738,6 +738,83 @@
       </div>
     </div>
   </div>
+
+  <!-- ══════════════ JUDGE INTEGRITY ANALYSIS ══════════════ -->
+  <div class="card" style="margin-top:1.5rem" id="integrity-card">
+    <div class="card-title">🔍 Judge Integrity Analysis
+      <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+        Detects round-by-round divergences and suspicious voting patterns within a single competition
+      </span>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1rem;font-size:0.85rem">
+      <strong>Method:</strong> For each judge, we compare how their marks change between rounds
+      vs. how the <em>rest of the panel</em> changed. A judge who moves a couple sharply up or down
+      while the panel consensus stays flat — or vice versa — is flagged.
+      A <strong>suspicion index &gt; 0.08</strong> is considered high; &gt; 0.04 medium.
+    </div>
+
+    <!-- Competition selector -->
+    <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+      <div style="flex:1;min-width:300px">
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">Competition slug</label>
+        <input id="integrity-slug" type="text" class="form-input"
+          value="GrandSlam-Blackpool-Adult-Latin-65352"
+          placeholder="e.g. GrandSlam-Blackpool-Adult-Latin-65352"
+          list="integrity-slug-suggestions">
+        <datalist id="integrity-slug-suggestions"></datalist>
+      </div>
+      <div>
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">&nbsp;</label>
+        <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer;padding:0.55rem 0">
+          <input type="checkbox" id="integrity-force"> Force re-scrape
+        </label>
+      </div>
+      <div>
+        <button class="btn btn-primary" onclick="runIntegrityAnalysis()" id="btn-integrity">
+          🔬 Analyze
+        </button>
+      </div>
+    </div>
+
+    <div id="integrity-status" style="font-size:0.85rem;color:var(--gray-500);margin-bottom:0.5rem"></div>
+
+    <!-- Results panel (hidden until analysis runs) -->
+    <div id="integrity-results" style="display:none">
+
+      <!-- Summary row -->
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="integrity-summary-row">
+      </div>
+
+      <!-- Suspicion index table -->
+      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
+        🚨 Suspicion Index per Judge
+        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+          divergences ÷ opportunities · &gt;0.08 = 🔴 high · &gt;0.04 = 🟡 medium · ≤0.04 = 🟢 low
+        </span>
+      </div>
+      <div id="integrity-suspicion-table" class="table-wrap" style="margin-bottom:1.5rem"></div>
+
+      <!-- Divergence events -->
+      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
+        ⚡ Top Divergence Events
+        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+          Rounds where a judge's opinion shifted against the panel consensus
+        </span>
+      </div>
+      <div id="integrity-divergence-table" class="table-wrap" style="margin-bottom:1.5rem"></div>
+
+      <!-- Within-competition correlations -->
+      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
+        🤝 Most Similar Judge Pairs (this competition)
+        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+          Spearman r on round-1 marks — very high r may indicate bloc voting
+        </span>
+      </div>
+      <div id="integrity-corr-table" class="table-wrap"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══════════════════ MODAL EVENTO ═══════════════════ -->
@@ -3482,6 +3559,206 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
       `<div class="alert alert-error">Error: ${e.message}</div>`;
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// JUDGE INTEGRITY ANALYSIS
+// ══════════════════════════════════════════════════════════════
+
+async function runIntegrityAnalysis() {
+  const slug = document.getElementById('integrity-slug').value.trim();
+  if (!slug) { toast('Enter a competition slug first', 'warning'); return; }
+
+  const force = document.getElementById('integrity-force').checked;
+  const btn   = document.getElementById('btn-integrity');
+  const status = document.getElementById('integrity-status');
+  const results = document.getElementById('integrity-results');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Analyzing…';
+  status.textContent = 'Scraping marks and computing analysis (this may take 10–30 seconds)…';
+  results.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/integrity/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, force })
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      status.innerHTML = `<span style="color:var(--danger)">❌ ${data.error || 'Unknown error'}</span>`;
+      return;
+    }
+
+    status.innerHTML = `<span style="color:var(--success)">✅ Analysis complete — ${data.total_marks_rows} mark rows, ${(data.rounds||[]).length} rounds, ${(data.judges||[]).length} judges</span>`;
+    renderIntegrityResults(data);
+    results.style.display = 'block';
+
+  } catch (e) {
+    status.innerHTML = `<span style="color:var(--danger)">❌ Network error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔬 Analyze';
+  }
+}
+
+function renderIntegrityResults(data) {
+  // ── Summary stats row ──────────────────────────────────────
+  const summaryRow = document.getElementById('integrity-summary-row');
+  const susp_idx   = data.suspicion_index || [];
+  const highCount  = susp_idx.filter(r => r.risk === 'high').length;
+  const medCount   = susp_idx.filter(r => r.risk === 'medium').length;
+  const nRounds    = (data.rounds  || []).length;
+  const nJudges    = (data.judges  || []).length;
+  const nDivEvents = (data.suspicious_events || []).length;
+  summaryRow.innerHTML = `
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
+      <div style="font-size:1.8rem;font-weight:700;color:#0369a1">${nRounds}</div>
+      <div style="font-size:0.78rem;color:#075985;font-weight:600">Rounds</div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
+      <div style="font-size:1.8rem;font-weight:700;color:#15803d">${nJudges}</div>
+      <div style="font-size:0.78rem;color:#166534;font-weight:600">Judges</div>
+    </div>
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
+      <div style="font-size:1.8rem;font-weight:700;color:#c2410c">${nDivEvents}</div>
+      <div style="font-size:0.78rem;color:#9a3412;font-weight:600">Divergence Events</div>
+    </div>
+    <div style="background:${highCount > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${highCount > 0 ? '#fecaca' : '#bbf7d0'};border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
+      <div style="font-size:1.8rem;font-weight:700;color:${highCount > 0 ? '#dc2626' : '#15803d'}">${highCount}</div>
+      <div style="font-size:0.78rem;color:${highCount > 0 ? '#991b1b' : '#166534'};font-weight:600">🔴 High-Risk Judges</div>
+    </div>
+    <div style="background:#fefce8;border:1px solid #fef08a;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
+      <div style="font-size:1.8rem;font-weight:700;color:#a16207">${medCount}</div>
+      <div style="font-size:0.78rem;color:#854d0e;font-weight:600">🟡 Medium-Risk</div>
+    </div>`;
+
+  // ── Suspicion index table ──────────────────────────────────
+  const susp   = data.suspicion_index || [];
+  const suspEl = document.getElementById('integrity-suspicion-table');
+  if (!susp.length) {
+    suspEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">No divergences detected — not enough round data to analyze.</div>';
+  } else {
+    suspEl.innerHTML = `<table>
+      <thead><tr>
+        <th>Judge</th><th>Divergences</th><th>Opportunities</th>
+        <th>Suspicion Index</th><th>Avg r (R1)</th><th>Risk</th>
+      </tr></thead>
+      <tbody>${[...susp].sort((a,b) => b.index - a.index).map(r => {
+        const pct  = (r.index * 100).toFixed(1);
+        const bar  = Math.min(100, r.index * 500);
+        const [bg, label, emoji] =
+          r.risk === 'high'   ? ['#fee2e2','HIGH','🔴'] :
+          r.risk === 'medium' ? ['#fef9c3','MEDIUM','🟡'] :
+                                ['#f0fdf4','LOW','🟢'];
+        const barCol = r.risk === 'high' ? '#dc2626' : r.risk === 'medium' ? '#d97706' : '#059669';
+        const displayName = r.name && r.name !== r.letter ? `${r.name} (${r.letter})` : (r.name || r.letter);
+        return `<tr style="background:${bg}">
+          <td style="font-weight:600">${displayName}</td>
+          <td style="text-align:center">${r.divergences}</td>
+          <td style="text-align:center">${r.opportunities}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <div style="width:80px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                <div style="width:${bar}%;height:100%;background:${barCol};border-radius:4px"></div>
+              </div>
+              <span style="font-weight:700">${pct}%</span>
+            </div>
+          </td>
+          <td style="text-align:center;color:var(--gray-500)">${(r.avg_r1_corr||0).toFixed(3)}</td>
+          <td><span style="font-weight:600">${emoji} ${label}</span></td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+  }
+
+  // ── Divergence events table ────────────────────────────────
+  // server returns suspicious_events as the list
+  const events = data.suspicious_events || [];
+  const divEl  = document.getElementById('integrity-divergence-table');
+  if (!events.length) {
+    divEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">No divergence events recorded.</div>';
+  } else {
+    // Sort by largest divergence gap, show up to 30
+    const sorted = [...events].sort((a,b) => b.divergence - a.divergence).slice(0, 30);
+    divEl.innerHTML = `<table>
+      <thead><tr>
+        <th>Judge</th><th>Couple</th><th>Rounds</th>
+        <th>Judge Δ</th><th>Panel Δ</th><th>Divergence</th><th>Direction</th>
+      </tr></thead>
+      <tbody>${sorted.map(e => {
+        const jname = e.judge_name || e.judge_letter || '—';
+        const gap   = e.divergence ?? Math.abs((e.judge_delta||0) - (e.panel_delta||0));
+        // Judge moved opposite to panel
+        const dir   = (e.panel_delta > 0) ? '⬇️ judge dropped (panel liked more)' : '⬆️ judge boosted (panel liked less)';
+        const jdCol = (e.judge_delta||0) >= 0 ? '#059669' : '#dc2626';
+        return `<tr>
+          <td style="font-weight:600">${jname}</td>
+          <td style="font-family:monospace;font-size:0.85rem">#${e.couple}</td>
+          <td style="font-size:0.82rem;color:var(--gray-500)">R${e.round_from}→R${e.round_to}</td>
+          <td style="font-weight:600;color:${jdCol}">${(e.judge_delta||0)>=0?'+':''}${(e.judge_delta||0).toFixed(3)}</td>
+          <td style="color:var(--gray-500)">${(e.panel_delta||0)>=0?'+':''}${(e.panel_delta||0).toFixed(3)}</td>
+          <td style="font-weight:700;color:#dc2626">+${gap.toFixed(3)}</td>
+          <td style="font-size:0.82rem">${dir}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+  }
+
+  // ── Within-competition correlations ───────────────────────
+  // server returns: [{j1, n1, j2, n2, r}, ...]
+  const pairs  = data.corr_pairs || [];
+  const corrEl = document.getElementById('integrity-corr-table');
+  if (!pairs.length) {
+    corrEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">Not enough data for correlation analysis (need at least 5 couples in round 1).</div>';
+  } else {
+    const top = [...pairs].sort((a,b) => b.r - a.r).slice(0, 20);
+    corrEl.innerHTML = `<table>
+      <thead><tr>
+        <th>Judge A</th><th>Judge B</th><th>Spearman r</th><th>Risk</th>
+      </tr></thead>
+      <tbody>${top.map(p => {
+        const r   = p.r ?? 0;
+        const bar = Math.max(0, Math.min(100, r * 100));
+        const [col, risk] =
+          r > 0.85 ? ['#dc2626', '🔴 Very high similarity — possible bloc'] :
+          r > 0.70 ? ['#d97706', '🟡 Similar'] :
+                     ['#059669', '🟢 Independent'];
+        const nameA = p.n1 && p.n1 !== p.j1 ? p.n1 : p.j1;
+        const nameB = p.n2 && p.n2 !== p.j2 ? p.n2 : p.j2;
+        return `<tr>
+          <td>${nameA}</td>
+          <td>${nameB}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <div style="width:70px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                <div style="width:${bar}%;height:100%;background:${col};border-radius:4px"></div>
+              </div>
+              <span style="font-weight:700;color:${col}">${r>=0?'+':''}${r.toFixed(3)}</span>
+            </div>
+          </td>
+          <td style="font-size:0.82rem">${risk}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+  }
+}
+
+// Populate the integrity slug datalist from scraped competitions
+function _populateIntegritySlugs() {
+  const dl = document.getElementById('integrity-slug-suggestions');
+  if (!dl) return;
+  const comps = _corrData.scraped_competitions || [];
+  dl.innerHTML = comps.map(c => `<option value="${c.slug}">`).join('');
+}
+
+// Hook into existing loadCorrelations so slugs stay fresh
+const _origLoadCorr = loadCorrelations;
+loadCorrelations = async function() {
+  await _origLoadCorr();
+  _populateIntegritySlugs();
+};
 </script>
 </body>
 </html>

@@ -4489,6 +4489,171 @@ def monday_sync():
     return jsonify(summary)
 
 
+@app.route("/api/integrity/analyze", methods=["POST"])
+def integrity_analyze():
+    """
+    Scrape + analyze one competition for judge integrity signals.
+    Body: {"slug": "GrandSlam-Blackpool-Adult-Latin-65352", "force": false}
+    Returns JSON with divergences, correlations, and suspicion scores.
+    """
+    import importlib.util as _ilu, statistics as _stat, itertools as _it
+    from collections import defaultdict as _dd
+
+    data = request.json or {}
+    slug  = data.get("slug", "GrandSlam-Blackpool-Adult-Latin-65352").strip()
+    force = bool(data.get("force", False))
+
+    # ── Lazy-load the analysis module ────────────────────────────────────────
+    spec = _ilu.spec_from_file_location("analizar_integridad",
+                                         os.path.join(APP_DIR, "analizar_integridad.py"))
+    mod  = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    conn = get_db()
+    mod.ensure_tables(conn)
+
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM competition_round_marks WHERE slug=?", (slug,)
+    ).fetchone()[0]
+
+    judge_names = {}
+    if force or existing == 0:
+        judge_names, marks = mod.scrape_marks_detailed(slug)
+        if not marks:
+            conn.close()
+            return jsonify({"ok": False, "error": "Could not scrape marks page", "slug": slug}), 422
+        mod.save_marks(conn, slug, judge_names, marks)
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT judge_letter, judge_name FROM competition_round_marks "
+            "WHERE slug=? AND judge_name IS NOT NULL", (slug,)
+        ).fetchall()
+        for r in rows:
+            judge_names[r["judge_letter"]] = r["judge_name"]
+
+    # ── Load data ─────────────────────────────────────────────────────────────
+    rows = conn.execute("""
+        SELECT round_num, judge_letter, judge_name, couple_num, marks_count, total_dances
+        FROM competition_round_marks WHERE slug=?
+        ORDER BY round_num, couple_num, judge_letter
+    """, (slug,)).fetchall()
+
+    total_rows = len(rows)
+    all_rounds = sorted({r["round_num"] for r in rows})
+    judge_letters = sorted({r["judge_letter"] for r in rows})
+
+    data_d = _dd(lambda: _dd(dict))
+    td_map  = {}
+    for r in rows:
+        data_d[r["round_num"]][r["couple_num"]][r["judge_letter"]] = r["marks_count"]
+        if r["round_num"] not in td_map:
+            td_map[r["round_num"]] = r["total_dances"] or 1
+
+    n_judges = len(judge_letters)
+
+    # ── Round-by-round divergence analysis ───────────────────────────────────
+    suspicious = []
+    judge_suspicious_count = _dd(int)
+    total_opportunities    = _dd(int)
+
+    for ri in range(len(all_rounds) - 1):
+        r1, r2 = all_rounds[ri], all_rounds[ri+1]
+        td1, td2 = td_map.get(r1,1), td_map.get(r2,1)
+        common = set(data_d[r1].keys()) & set(data_d[r2].keys())
+
+        for jltr in judge_letters:
+            total_opportunities[jltr] += len(common)
+
+        for couple in common:
+            j_r1 = data_d[r1][couple]; j_r2 = data_d[r2][couple]
+            total_r1 = sum(j_r1.values()) / (n_judges * td1)
+            total_r2 = sum(j_r2.values()) / (n_judges * td2)
+            panel_delta = total_r2 - total_r1
+
+            if abs(panel_delta) < 0.20:
+                continue
+
+            for jltr in judge_letters:
+                m1 = j_r1.get(jltr, 0); m2 = j_r2.get(jltr, 0)
+                norm1 = m1/td1; norm2 = m2/td2
+                judge_delta = norm2 - norm1
+                if (panel_delta > 0.20 and judge_delta < -0.3) or \
+                   (panel_delta < -0.20 and judge_delta > 0.3):
+                    suspicious.append({
+                        "judge_letter":  jltr,
+                        "judge_name":    judge_names.get(jltr, jltr),
+                        "couple":        couple,
+                        "round_from":    r1,
+                        "round_to":      r2,
+                        "panel_delta":   round(panel_delta, 3),
+                        "judge_delta":   round(judge_delta, 3),
+                        "divergence":    round(abs(judge_delta - panel_delta), 3),
+                    })
+                    judge_suspicious_count[jltr] += 1
+
+    # ── Within-competition correlation (round 1) ─────────────────────────────
+    r1 = all_rounds[0]
+    couple_list = sorted(data_d[r1].keys(), key=lambda x: int(x) if x.isdigit() else 0)
+    td1 = td_map.get(r1, 1)
+    vectors = {jltr: [data_d[r1][c].get(jltr, 0)/td1 for c in couple_list]
+               for jltr in judge_letters}
+
+    def spearman(a, b):
+        n = len(a)
+        if n < 5: return None
+        def rank(lst):
+            s = sorted(enumerate(lst), key=lambda x: x[1])
+            r = [0]*n
+            for rv, (oi, _) in enumerate(s): r[oi] = rv+1
+            return r
+        ra, rb = rank(a), rank(b)
+        d2 = sum((ra[i]-rb[i])**2 for i in range(n))
+        return 1 - (6*d2)/(n*(n**2-1))
+
+    corr_pairs = []
+    for j1, j2 in _it.combinations(judge_letters, 2):
+        r = spearman(vectors[j1], vectors[j2])
+        if r is not None:
+            corr_pairs.append({"j1": j1, "n1": judge_names.get(j1,j1),
+                               "j2": j2, "n2": judge_names.get(j2,j2),
+                               "r": round(r,3)})
+
+    avg_corr_per_judge = {}
+    for jltr in judge_letters:
+        vals = [p["r"] for p in corr_pairs if jltr in (p["j1"], p["j2"])]
+        avg_corr_per_judge[jltr] = round(sum(vals)/len(vals), 3) if vals else 0
+
+    # ── Suspicion index ───────────────────────────────────────────────────────
+    suspicion_index = []
+    for jltr in judge_letters:
+        cnt  = judge_suspicious_count.get(jltr, 0)
+        opps = total_opportunities.get(jltr, 1)
+        idx  = round(cnt/opps, 4) if opps else 0
+        suspicion_index.append({
+            "letter":       jltr,
+            "name":         judge_names.get(jltr, jltr),
+            "divergences":  cnt,
+            "opportunities": opps,
+            "index":        idx,
+            "avg_r1_corr":  avg_corr_per_judge.get(jltr, 0),
+            "risk":         "high" if idx > 0.08 else "medium" if idx > 0.04 else "low",
+        })
+    suspicion_index.sort(key=lambda x: -x["index"])
+
+    conn.close()
+    return jsonify({
+        "ok":      True,
+        "slug":    slug,
+        "rounds":  all_rounds,
+        "judges":  judge_letters,
+        "judge_names": judge_names,
+        "total_marks_rows": total_rows,
+        "suspicious_events": suspicious[:200],
+        "corr_pairs": sorted(corr_pairs, key=lambda x: -x["r"])[:30],
+        "suspicion_index": suspicion_index,
+    })
+
+
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")

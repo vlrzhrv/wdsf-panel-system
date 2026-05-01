@@ -380,12 +380,14 @@
             <th>WCH</th>
             <th>GS</th>
             <th>CCH</th>
+            <th title="Gender">♂♀</th>
+            <th title="AJS course / GKT test completed">AJS/GKT</th>
             <th>Status</th>
-            <th>Edit</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="judges-body">
-          <tr><td colspan="12" class="empty-state">Loading judges...</td></tr>
+          <tr><td colspan="15" class="empty-state">Loading judges...</td></tr>
         </tbody>
       </table>
     </div>
@@ -442,6 +444,22 @@
         <label>Number of judges</label>
         <input type="number" id="panel-size-input" min="3" max="20" value="9"
                style="width:80px;padding:0.5rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:1rem;">
+      </div>
+      <div class="form-group" style="min-width:200px">
+        <label title="Target gender balance in the panel (leave 0 to ignore)">⚖️ Gender balance</label>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.35rem">
+            ♂ Men
+            <input type="number" id="gender-men-input" min="0" max="20" value="0"
+                   style="width:52px;padding:0.35rem 0.4rem;border:1px solid #d1d5db;border-radius:0.4rem;font-size:0.9rem;">
+          </label>
+          <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.35rem">
+            ♀ Women
+            <input type="number" id="gender-women-input" min="0" max="20" value="0"
+                   style="width:52px;padding:0.35rem 0.4rem;border:1px solid #d1d5db;border-radius:0.4rem;font-size:0.9rem;">
+          </label>
+        </div>
+        <span style="font-size:0.72rem;color:#9ca3af">Set 0 to ignore. Requires gender set on judges.</span>
       </div>
       <div id="assign-actions" style="display:flex;gap:0.75rem;align-items:center;">
         <button class="btn btn-outline" onclick="loadExistingPanel()" id="view-panel-btn" style="display:none;">
@@ -902,6 +920,32 @@
           <option value="national" selected>National</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>Gender</label>
+        <select id="ej-gender">
+          <option value="">— Not set —</option>
+          <option value="M">♂ Male</option>
+          <option value="F">♀ Female</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label title="Absolute Judging System course">AJS Course</label>
+        <select id="ej-ajs" onchange="_onCompletedChange('ej-ajs','ej-ajs-date')">
+          <option value="">Not completed</option>
+          <option value="1">✅ Completed (no date)</option>
+          <option value="DATE">📅 Enter date...</option>
+        </select>
+        <input type="date" id="ej-ajs-date" style="display:none;margin-top:0.4rem;width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:0.4rem">
+      </div>
+      <div class="form-group">
+        <label title="General Knowledge Test">GKT Test</label>
+        <select id="ej-gkt" onchange="_onCompletedChange('ej-gkt','ej-gkt-date')">
+          <option value="">Not completed</option>
+          <option value="1">✅ Completed (no date)</option>
+          <option value="DATE">📅 Enter date...</option>
+        </select>
+        <input type="date" id="ej-gkt-date" style="display:none;margin-top:0.4rem;width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:0.4rem">
+      </div>
       <div class="form-group full" style="justify-content:flex-start">
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:400">
           <input type="checkbox" id="ej-active" onchange="toggleInactiveReason()">
@@ -918,6 +962,19 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEditJudge()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditJudge()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── JUDGE HISTORY MODAL ───────────────────────────────────────────────── -->
+<div id="judge-history-modal" class="modal-overlay">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-title">📋 Judging History <span id="jh-name" style="font-size:0.85rem;color:var(--gray-500)"></span></div>
+    <div id="jh-content" style="max-height:60vh;overflow-y:auto">
+      <div class="alt-loading">Loading history...</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeJudgeHistory()">Close</button>
     </div>
   </div>
 </div>
@@ -1142,6 +1199,14 @@ async function loadJudges() {
         <td style="text-align:center"><strong>${j.judging_world_championships ?? 0}</strong></td>
         <td style="text-align:center">${j.judging_grand_slams ?? 0}</td>
         <td style="text-align:center">${j.judging_continental_championships ?? 0}</td>
+        <td style="text-align:center">
+          ${j.gender ? `<span class="badge" style="background:${j.gender==='M'?'#dbeafe':'#fce7f3'};color:${j.gender==='M'?'#1e40af':'#9d174d'}">${j.gender==='M'?'♂ M':'♀ F'}</span>` : '<span class="text-muted">—</span>'}
+        </td>
+        <td style="text-align:center;font-size:0.75rem">
+          ${j.ajs_completed ? `<span title="AJS completed${j.ajs_completed.length>1?' on '+j.ajs_completed:''}">✅ AJS</span>` : '<span class="text-muted">—</span>'}
+          <br>
+          ${j.gkt_completed ? `<span title="GKT completed${j.gkt_completed.length>1?' on '+j.gkt_completed:''}">✅ GKT</span>` : '<span class="text-muted">—</span>'}
+        </td>
         <td>
           <span class="badge ${j.active ? 'badge-active' : 'badge-inactive'}"
                 title="${j.active ? 'Click to mark inactive' : (j.notes ? 'Reason: ' + j.notes + '\nClick to reactivate' : 'Click to reactivate')}"
@@ -1149,7 +1214,10 @@ async function loadJudges() {
             ${j.active ? 'Active' : 'Inactive'}
           </span>
         </td>
-        <td><button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})">✎</button></td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})" title="Edit judge">✎</button>
+          <button class="btn btn-sm btn-outline" onclick="openJudgeHistory(${j.id})" title="View judging history" style="margin-left:0.25rem">📋</button>
+        </td>
       </tr>`;
     }).join('');
   } catch(e) {
@@ -1210,6 +1278,33 @@ async function openEditJudge(jid) {
     document.getElementById('ej-career').value      = j.career_level || 'national';
     document.getElementById('ej-active').checked    = !!j.active;
     document.getElementById('ej-notes').value       = j.notes || '';
+    document.getElementById('ej-gender').value      = j.gender || '';
+    // AJS
+    const ajsVal = j.ajs_completed;
+    if (!ajsVal) {
+      document.getElementById('ej-ajs').value = '';
+      document.getElementById('ej-ajs-date').style.display = 'none';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(ajsVal)) {
+      document.getElementById('ej-ajs').value = 'DATE';
+      document.getElementById('ej-ajs-date').value = ajsVal;
+      document.getElementById('ej-ajs-date').style.display = '';
+    } else {
+      document.getElementById('ej-ajs').value = '1';
+      document.getElementById('ej-ajs-date').style.display = 'none';
+    }
+    // GKT
+    const gktVal = j.gkt_completed;
+    if (!gktVal) {
+      document.getElementById('ej-gkt').value = '';
+      document.getElementById('ej-gkt-date').style.display = 'none';
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(gktVal)) {
+      document.getElementById('ej-gkt').value = 'DATE';
+      document.getElementById('ej-gkt-date').value = gktVal;
+      document.getElementById('ej-gkt-date').style.display = '';
+    } else {
+      document.getElementById('ej-gkt').value = '1';
+      document.getElementById('ej-gkt-date').style.display = 'none';
+    }
     // Show reason box if inactive
     document.getElementById('ej-reason-group').style.display = j.active ? 'none' : 'block';
     // Show WDSF sync info if notes contain sync info
@@ -1237,17 +1332,35 @@ function closeEditJudge() {
   document.getElementById('edit-judge-modal').classList.remove('open');
 }
 
+function _getCompletedValue(selectId, dateId) {
+  const v = document.getElementById(selectId).value;
+  if (!v) return null;
+  if (v === 'DATE') return document.getElementById(dateId).value || '1';
+  return '1';
+}
+
+function _onCompletedChange(selectId, dateId) {
+  const v = document.getElementById(selectId).value;
+  document.getElementById(dateId).style.display = v === 'DATE' ? '' : 'none';
+}
+
 async function saveEditJudge() {
   const jid     = document.getElementById('ej-id').value;
   const primary = document.getElementById('ej-primary').value;
   const career  = document.getElementById('ej-career').value;
   const active  = document.getElementById('ej-active').checked ? 1 : 0;
   const notes   = document.getElementById('ej-notes').value.trim() || null;
+  const gender  = document.getElementById('ej-gender').value || null;
+  const ajs     = _getCompletedValue('ej-ajs', 'ej-ajs-date');
+  const gkt     = _getCompletedValue('ej-gkt', 'ej-gkt-date');
   try {
     const res = await fetch(API + '/judges/' + jid, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ primary_discipline: primary || null, career_level: career, active, notes })
+      body: JSON.stringify({
+        primary_discipline: primary || null, career_level: career, active, notes,
+        gender, ajs_completed: ajs, gkt_completed: gkt
+      })
     });
     if (!res.ok) throw new Error('Error saving');
     closeEditJudge();
@@ -1283,6 +1396,70 @@ async function quickToggleActive(jid, currentActive, name) {
       loadJudges();
     } catch(e) { toast('Error: ' + e.message, 'error'); }
   }
+}
+
+// ── Judge History ─────────────────────────────────────────────────────────
+
+async function openJudgeHistory(jid) {
+  document.getElementById('jh-name').textContent = '';
+  document.getElementById('jh-content').innerHTML = '<div class="alt-loading">⏳ Loading...</div>';
+  document.getElementById('judge-history-modal').classList.add('open');
+  try {
+    const data = await fetch(`${API}/judges/${jid}/history`).then(r => r.json());
+    const j = data.judge || {};
+    document.getElementById('jh-name').textContent = `— ${j.last_name || ''}, ${j.first_name || ''}`;
+
+    const official  = data.official  || [];
+    const internal  = data.internal  || [];
+
+    const allRows = [
+      ...official.map(r => ({
+        date: r.comp_date, name: r.comp_name, disc: r.comp_discipline,
+        loc: r.comp_location, role: r.section === 'adjudicator' ? '✅ Adjudicator' : '📋 Nominated',
+        status: r.status || '', source: 'WDSF'
+      })),
+      ...internal.map(r => ({
+        date: r.date, name: r.name, disc: r.discipline,
+        loc: r.location, role: r.role === 'reserve' ? '🔄 Reserve' : '✅ Panel',
+        status: r.status || '', source: 'Internal'
+      })),
+    ].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+    if (!allRows.length) {
+      document.getElementById('jh-content').innerHTML = '<div style="padding:1rem;color:var(--gray-500);text-align:center">No judging history found in the last 18 months.</div>';
+      return;
+    }
+
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead><tr style="background:#f8fafc">
+        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Date</th>
+        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Competition</th>
+        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Disc.</th>
+        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Role</th>
+        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Source</th>
+      </tr></thead><tbody>`;
+
+    for (const r of allRows) {
+      const srcBadge = r.source === 'WDSF'
+        ? `<span class="badge" style="background:#dbeafe;color:#1e40af">WDSF</span>`
+        : `<span class="badge" style="background:#d1fae5;color:#065f46">Internal</span>`;
+      html += `<tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.date || '—'}</td>
+        <td style="padding:0.45rem 0.5rem">${r.name || '—'}${r.loc ? `<div style="color:#9ca3af;font-size:0.72rem">${r.loc}</div>` : ''}</td>
+        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.disc || '—'}</td>
+        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.role}</td>
+        <td style="padding:0.45rem 0.5rem">${srcBadge}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('jh-content').innerHTML = html;
+  } catch(e) {
+    document.getElementById('jh-content').innerHTML = `<div style="padding:1rem;color:#dc2626">Error: ${e.message}</div>`;
+  }
+}
+
+function closeJudgeHistory() {
+  document.getElementById('judge-history-modal').classList.remove('open');
 }
 
 // WDSF sync
@@ -1978,11 +2155,19 @@ async function runAssignment() {
   const panelSize = parseInt(document.getElementById('panel-size-input').value) || 9;
   const invitedIds = getInvitedIds();
 
+  // Gender balance target
+  const genderMen   = parseInt(document.getElementById('gender-men-input')?.value)   || 0;
+  const genderWomen = parseInt(document.getElementById('gender-women-input')?.value) || 0;
+  const genderTarget = (genderMen + genderWomen > 0)
+    ? { men: genderMen, women: genderWomen }
+    : null;
+
   try {
     const res = await fetch(API + '/events/' + id + '/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ panel_size: panelSize, invited_judge_ids: invitedIds })
+      body: JSON.stringify({ panel_size: panelSize, invited_judge_ids: invitedIds,
+                             gender_target: genderTarget })
     });
     const data = await res.json();
     if (!res.ok) { throw new Error(data.error || 'Assignment error'); }
@@ -1998,7 +2183,7 @@ async function runAssignment() {
 }
 
 function displayResult(data) {
-  const { event, panel, reserves, stats, zones, exclusions, panel_logic, invited_summary } = data;
+  const { event, panel, reserves, stats, zones, exclusions, panel_logic, invited_summary, gender_summary } = data;
 
   // Summary
   document.getElementById('assign-summary').innerHTML = `
@@ -2217,6 +2402,21 @@ function renderPanelLogic(logic) {
     ? `<div class="alert alert-warning" style="margin-top:1rem">🌏 <strong>Asia Rule active:</strong> At least ${logic.asia_minimum} of ${logic.panel_size} judges must come from Asia (event held in ${logic.host_country}, zone: ${logic.host_zone}).</div>`
     : '';
 
+  // Gender balance summary alert
+  const genderNote = gender_summary
+    ? (() => {
+        const ok = gender_summary.met;
+        const col = ok ? '#065f46' : '#92400e';
+        const bg  = ok ? '#d1fae5' : '#fef3c7';
+        return `<div style="margin-top:0.75rem;padding:0.5rem 0.75rem;border-radius:0.4rem;background:${bg};color:${col};font-size:0.82rem">
+          ⚖️ <strong>Gender balance:</strong>
+          Target ♂${gender_summary.target_men} ♀${gender_summary.target_women} →
+          Actual ♂${gender_summary.actual_men} ♀${gender_summary.actual_women}
+          ${ok ? '✅ Met' : '⚠️ Not fully met — not enough judges with gender data'}
+        </div>`;
+      })()
+    : '';
+
   content.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap">
       <div>
@@ -2227,6 +2427,7 @@ function renderPanelLogic(logic) {
         <div style="font-size:0.8rem;font-weight:700;color:#374151;margin:1rem 0 0.5rem">🏆 Top-10 ${logic.discipline} ranking (★ = mandatory)</div>
         <div>${top10}</div>
         ${asiaNote}
+        ${genderNote}
       </div>
       <div>
         <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.5rem">📊 Scoring criteria (max 100 pts)</div>
@@ -2341,12 +2542,17 @@ function judgeCard(j, pos, isReserve=false) {
       <div class="judge-exp">
         WCH: <strong>${wch}</strong> &nbsp;·&nbsp; GS: <strong>${gs}</strong> &nbsp;·&nbsp; CCH: <strong>${cch}</strong>
         &nbsp;·&nbsp; Lic: <span class="badge badge-${j.license_type||'null'}">${j.license_type||'—'}</span>
+        ${j.gender ? `&nbsp;·&nbsp; <span style="font-size:0.72rem;color:#6b7280">${j.gender==='M'?'♂':'♀'}</span>` : ''}
       </div>
       <div style="margin-top:0.45rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
         ${specialtyBadge(j)}
         ${panelStats(j)}
+        ${j.ajs_completed ? `<span style="font-size:0.65rem;background:#d1fae5;color:#065f46;padding:0.15rem 0.4rem;border-radius:999px" title="AJS course completed">✅ AJS</span>` : ''}
+        ${j.gkt_completed ? `<span style="font-size:0.65rem;background:#d1fae5;color:#065f46;padding:0.15rem 0.4rem;border-radius:999px" title="GKT test completed">✅ GKT</span>` : ''}
         ${invitedBadge}
       </div>
+      ${j.same_event_last_year ? `<div style="margin-top:0.4rem;font-size:0.72rem;background:#fef9c3;color:#713f12;padding:0.25rem 0.5rem;border-radius:0.3rem;border:1px solid #fde68a">⚠️ Judged this same event last year</div>` : ''}
+      ${j.same_agegroup_disc_last_year ? `<div style="margin-top:0.3rem;font-size:0.72rem;background:#fff7ed;color:#7c2d12;padding:0.25rem 0.5rem;border-radius:0.3rem;border:1px solid #fed7aa">🔶 Judged same discipline + age group in the past 12 months</div>` : ''}
       ${scoreBreakdownHtml(j)}
       ${swapBtn}
     </div>`;

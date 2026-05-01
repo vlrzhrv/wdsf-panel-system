@@ -381,6 +381,9 @@ def init_db():
     _add_col("judges", "std_panels_count",    "INTEGER DEFAULT 0")
     _add_col("judges", "lat_panels_count",    "INTEGER DEFAULT 0")
     _add_col("judges", "specialty",           "TEXT")
+    _add_col("judges", "gender",              "TEXT")   # 'M' or 'F'
+    _add_col("judges", "ajs_completed",       "TEXT")   # date completed or '1'
+    _add_col("judges", "gkt_completed",       "TEXT")   # date completed or '1'
     _add_col("events", "wdsf_id",             "TEXT")
     _add_col("events", "url",                 "TEXT")
     _add_col("panel_assignments", "competition_identifier", "TEXT")
@@ -448,6 +451,9 @@ def judge_dict(row):
     d["specialty"]           = d.get("specialty") or "Unknown"
     d["primary_discipline"]  = d.get("primary_discipline") or None
     d["career_level"]        = d.get("career_level") or "national"
+    d["gender"]              = d.get("gender") or None
+    d["ajs_completed"]       = d.get("ajs_completed") or None
+    d["gkt_completed"]       = d.get("gkt_completed") or None
     return d
 
 # Mapeo de disciplinas: nombre del evento → términos aceptados en el campo disciplines del juez
@@ -1210,7 +1216,8 @@ def judge(jid):
     if request.method == "PUT":
         data = request.json or {}
         EDITABLE = ["career_level", "zone", "notes", "active", "license_type",
-                    "license_valid_until", "primary_discipline"]
+                    "license_valid_until", "primary_discipline",
+                    "gender", "ajs_completed", "gkt_completed"]
         for field in EDITABLE:
             if field in data:
                 conn.execute(f"UPDATE judges SET {field}=? WHERE id=?", (data[field], jid))
@@ -1799,6 +1806,116 @@ def committed_judges():
     return jsonify(result)
 
 
+@app.route("/api/judges/<int:jid>/history")
+def judge_history(jid):
+    """Returns judging history for the last 18 months (official WDSF + internal panels)."""
+    from datetime import timedelta
+    cutoff = (date.today() - timedelta(days=548)).isoformat()  # ~18 months
+    conn = get_db()
+    nom_rows = conn.execute("""
+        SELECT comp_name, comp_date, comp_discipline, comp_location, section, role, status
+        FROM official_nominations
+        WHERE judge_id=? AND comp_date >= ?
+        ORDER BY comp_date DESC
+    """, (jid, cutoff)).fetchall()
+    panel_rows = conn.execute("""
+        SELECT e.name, e.date, e.discipline, e.location, e.event_type, pa.role, e.status
+        FROM panel_assignments pa
+        JOIN events e ON pa.event_id = e.id
+        WHERE pa.judge_id=? AND e.date >= ?
+          AND e.status IN ('confirmed','officially_nominated','sent_for_review','assigned')
+        ORDER BY e.date DESC
+    """, (jid, cutoff)).fetchall()
+    judge_row = conn.execute("SELECT first_name, last_name FROM judges WHERE id=?", (jid,)).fetchone()
+    conn.close()
+    return jsonify({
+        "judge": dict(judge_row) if judge_row else {},
+        "official":  [dict(r) for r in nom_rows],
+        "internal":  [dict(r) for r in panel_rows],
+    })
+
+
+def get_judge_event_flags(conn, judge_ids, event):
+    """
+    For each judge_id in judge_ids, checks:
+    - same_event_last_year: judged same competition (by location+discipline) approx 1 year ago
+    - same_agegroup_disc_last_year: judged same discipline+age_group in last 12 months
+
+    Returns {judge_id: {same_event_last_year: bool, same_agegroup_disc_last_year: bool}}
+    """
+    from datetime import timedelta
+    if not judge_ids:
+        return {}
+
+    discipline    = (event.get("discipline") or "").strip()
+    age_group     = (event.get("age_group")  or "").strip().upper()
+    event_name    = (event.get("name")        or "").upper()
+    event_loc     = (event.get("location")    or "").upper()
+    event_country = (event.get("country")     or "").upper()
+
+    # Words from event name (significant, >3 chars)
+    event_words = {w for w in event_name.split() if len(w) > 3}
+
+    today = date.today()
+    # "Last year's edition" = 8 to 22 months ago
+    ly_from = (today - timedelta(days=660)).isoformat()
+    ly_to   = (today - timedelta(days=240)).isoformat()
+    # "Last 12 months" for age+disc check
+    yr_ago  = (today - timedelta(days=365)).isoformat()
+
+    flags = {jid: {"same_event_last_year": False, "same_agegroup_disc_last_year": False}
+             for jid in judge_ids}
+
+    placeholders = ",".join("?" * len(judge_ids))
+
+    try:
+        # ── same event last year ──────────────────────────────────────────────
+        rows = conn.execute(f"""
+            SELECT judge_id, comp_name, comp_location, comp_discipline
+            FROM official_nominations
+            WHERE judge_id IN ({placeholders})
+              AND comp_date >= ? AND comp_date <= ?
+              AND section = 'adjudicator'
+        """, list(judge_ids) + [ly_from, ly_to]).fetchall()
+
+        for r in rows:
+            jid = r["judge_id"]
+            if jid not in flags:
+                continue
+            if (r["comp_discipline"] or "").strip() != discipline:
+                continue
+            r_loc   = (r["comp_location"] or "").upper()
+            r_words = {w for w in (r["comp_name"] or "").upper().split() if len(w) > 3}
+            loc_hit = (event_loc and event_loc in r_loc) or \
+                      (event_country and event_country in r_loc)
+            kw_hit  = len(event_words & r_words) >= 3
+            if loc_hit or kw_hit:
+                flags[jid]["same_event_last_year"] = True
+
+        # ── same age group + discipline last 12 months ───────────────────────
+        if age_group and age_group not in ("", "ADULT"):  # Adult is universal — only flag specific age groups
+            rows2 = conn.execute(f"""
+                SELECT judge_id, comp_name, comp_discipline
+                FROM official_nominations
+                WHERE judge_id IN ({placeholders})
+                  AND comp_date >= ?
+                  AND section = 'adjudicator'
+            """, list(judge_ids) + [yr_ago]).fetchall()
+
+            for r in rows2:
+                jid = r["judge_id"]
+                if jid not in flags:
+                    continue
+                if (r["comp_discipline"] or "").strip() != discipline:
+                    continue
+                if age_group in (r["comp_name"] or "").upper():
+                    flags[jid]["same_agegroup_disc_last_year"] = True
+    except Exception:
+        pass
+
+    return flags
+
+
 @app.route("/api/events/<int:eid>/assign", methods=["POST"])
 def assign(eid):
     conn = get_db()
@@ -1827,6 +1944,16 @@ def assign(eid):
     discipline  = (event.get("discipline") or "").strip()
     host        = normalize_country(event.get("country",""))
     today       = date.today().isoformat()
+
+    # Gender balance target: {men: N, women: N}
+    gender_target_raw = body.get("gender_target") or {}
+    try:
+        gender_men   = max(0, int(gender_target_raw.get("men",   0)))
+        gender_women = max(0, int(gender_target_raw.get("women", 0)))
+    except (TypeError, ValueError):
+        gender_men = gender_women = 0
+    # Only enforce if at least one target is nonzero and total ≤ panel_size
+    enforce_gender = (gender_men + gender_women) > 0 and (gender_men + gender_women) <= panel_size
 
     # Optional list of judge IDs pre-invited by the organizer
     raw_invited = body.get("invited_judge_ids") or []
@@ -1919,14 +2046,42 @@ def assign(eid):
     else:
         exclusions.append(f"No Licencia A judge from host country: {host}")
 
+    def panel_gender_count():
+        """Return (men_count, women_count) in current panel."""
+        m = sum(1 for j in panel if j.get("gender") == "M")
+        f = sum(1 for j in panel if j.get("gender") == "F")
+        return m, f
+
+    def gender_bonus(j):
+        """Extra score for underrepresented gender (if gender_target is set)."""
+        if not enforce_gender:
+            return 0
+        g = j.get("gender")
+        if not g:
+            return 0
+        m_now, f_now = panel_gender_count()
+        if g == "M" and m_now < gender_men:
+            return 15   # bonus to bring in a man when we need more men
+        if g == "F" and f_now < gender_women:
+            return 15   # bonus to bring in a woman when we need more women
+        return 0
+
     def rescore_pool(pool):
-        """Rescore all judges in pool using current panel state."""
+        """Rescore all judges in pool using current panel state (+ gender bonus)."""
         pnames = panel_names()
         for j in pool:
-            j["score"], j["score_breakdown"] = calc_score(
+            base, breakdown = calc_score(
                 j, event, used_zones, return_breakdown=True,
                 assigned_panel_names=pnames, corr_map=corr_map,
                 workload=workload_map)
+            gb = gender_bonus(j)
+            j["score"]           = round(base + gb, 2)
+            j["score_breakdown"] = breakdown
+            if gb:
+                j["score_breakdown"]["gender_balance"] = {
+                    "pts": gb, "max": 15,
+                    "detail": f"⚖️ Gender balance bonus ({'♂' if j.get('gender')=='M' else '♀'})"
+                }
         pool.sort(key=lambda x: x["score"], reverse=True)
 
     # Score non-host judges (initial scoring, no panel context yet)
@@ -2093,6 +2248,26 @@ def assign(eid):
             j["selection_reason"] = f"Reserve: next highest-scoring eligible judge from {country} not already in the panel."
             reserves.append(j)
 
+    # Attach same-event / same-agegroup-disc flags to each judge
+    all_ids_for_flags = [j["id"] for j in panel + reserves]
+    event_flags = get_judge_event_flags(conn, all_ids_for_flags, event)
+    for j in panel + reserves:
+        f = event_flags.get(j["id"], {})
+        j["same_event_last_year"]       = f.get("same_event_last_year", False)
+        j["same_agegroup_disc_last_year"] = f.get("same_agegroup_disc_last_year", False)
+
+    # Gender balance summary
+    m_final, f_final = panel_gender_count()
+    gender_summary = None
+    if enforce_gender:
+        gender_summary = {
+            "target_men":    gender_men,
+            "target_women":  gender_women,
+            "actual_men":    m_final,
+            "actual_women":  f_final,
+            "met":           m_final >= gender_men and f_final >= gender_women
+        }
+
     # Save to DB
     conn.execute("DELETE FROM panel_assignments WHERE event_id=?", (eid,))
     for i, j in enumerate(panel):
@@ -2144,6 +2319,7 @@ def assign(eid):
         "exclusions": exclusions,
         "panel_logic": panel_logic,
         "invited_summary": invited_summary,
+        "gender_summary": gender_summary,
         "stats": {
             "candidates": len(valid),
             "assigned": len(panel),
@@ -2158,12 +2334,18 @@ def panel_detail(eid):
         SELECT pa.*, j.first_name, j.last_name, j.nationality, j.representing,
                j.license_type, j.disciplines, j.judging_world_championships,
                j.judging_grand_slams, j.judging_continental_championships, j.career_level,
-               j.specialty, j.std_panels_count, j.lat_panels_count, j.id as judge_id
+               j.specialty, j.std_panels_count, j.lat_panels_count, j.id as judge_id,
+               j.gender, j.ajs_completed, j.gkt_completed
         FROM panel_assignments pa
         JOIN judges j ON pa.judge_id = j.id
         WHERE pa.event_id = ?
         ORDER BY pa.position
     """, (eid,)).fetchall()
+    # Get event for flags
+    ev_row = conn.execute("SELECT * FROM events WHERE id=?", (eid,)).fetchone()
+    event_dict = dict(ev_row) if ev_row else {}
+    judge_ids_list = [dict(r)["judge_id"] for r in rows]
+    event_flags = get_judge_event_flags(conn, judge_ids_list, event_dict)
     conn.close()
     result = []
     for r in rows:
@@ -2175,6 +2357,9 @@ def panel_detail(eid):
         d["std_panels_count"] = d.get("std_panels_count") or 0
         d["lat_panels_count"] = d.get("lat_panels_count") or 0
         d["specialty"]        = d.get("specialty") or "Unknown"
+        f = event_flags.get(d.get("judge_id"), {})
+        d["same_event_last_year"]        = f.get("same_event_last_year", False)
+        d["same_agegroup_disc_last_year"] = f.get("same_agegroup_disc_last_year", False)
         result.append(d)
     return jsonify(result)
 

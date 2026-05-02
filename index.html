@@ -815,6 +815,59 @@
     </div>
   </div>
 
+  <!-- ══════════════ BATCH SCRAPE + AGGREGATE ANALYSIS ══════════════ -->
+  <div class="card" style="margin-top:1.5rem" id="integrity-batch-card">
+    <div class="card-title">⚡ Batch Analysis — All Competitions
+      <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+        Scrapes per-round data from all 300+ competitions and computes aggregate suspicion scores per judge
+      </span>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:1rem;font-size:0.85rem">
+      <strong>How it works:</strong> For each competition with ≥2 rounds (qualifying → semifinal → final),
+      we detect when a judge moved a couple against the panel consensus. Aggregated across hundreds of
+      competitions, a consistently high suspicion index is a real signal.
+      This will take <strong>5–15 minutes</strong> to scrape all competitions — run once, results persist.
+    </div>
+
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
+      <button class="btn btn-primary" onclick="startBatchScrape()" id="btn-batch-start">
+        🚀 Scrape All &amp; Analyze
+      </button>
+      <button class="btn btn-secondary" onclick="loadAggregateResults()" id="btn-batch-aggregate">
+        📊 Show Aggregate Results
+      </button>
+      <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+        <input type="checkbox" id="batch-force"> Force re-scrape (ignore cached)
+      </label>
+    </div>
+
+    <!-- Progress bar -->
+    <div id="batch-progress-wrap" style="display:none;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem">
+        <span id="batch-status-text">Starting…</span>
+        <span id="batch-pct">0%</span>
+      </div>
+      <div style="height:12px;background:#e5e7eb;border-radius:6px;overflow:hidden">
+        <div id="batch-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:6px;transition:width 0.4s"></div>
+      </div>
+      <div id="batch-substatus" style="font-size:0.75rem;color:var(--gray-500);margin-top:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+    </div>
+
+    <!-- Aggregate results -->
+    <div id="batch-aggregate-results" style="display:none">
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem" id="batch-summary-row"></div>
+
+      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
+        🎯 Aggregate Suspicion Index
+        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+          Sorted by suspicion index — judges with consistent divergences across many competitions
+        </span>
+      </div>
+      <div id="batch-judge-table" class="table-wrap"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══════════════════ MODAL EVENTO ═══════════════════ -->
@@ -3759,6 +3812,172 @@ loadCorrelations = async function() {
   await _origLoadCorr();
   _populateIntegritySlugs();
 };
+
+// ══════════════════════════════════════════════════════════════
+// BATCH SCRAPE + AGGREGATE ANALYSIS
+// ══════════════════════════════════════════════════════════════
+
+let _batchPollTimer = null;
+
+async function startBatchScrape() {
+  const force = document.getElementById('batch-force').checked;
+  const btn   = document.getElementById('btn-batch-start');
+  btn.disabled = true;
+  btn.textContent = '⏳ Starting…';
+
+  try {
+    const res = await fetch('/api/integrity/batch/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ force })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.error || 'Could not start batch', 'error');
+      btn.disabled = false;
+      btn.textContent = '🚀 Scrape All & Analyze';
+      return;
+    }
+    document.getElementById('batch-progress-wrap').style.display = 'block';
+    _pollBatchStatus();
+  } catch(e) {
+    toast('Network error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '🚀 Scrape All & Analyze';
+  }
+}
+
+function _pollBatchStatus() {
+  clearTimeout(_batchPollTimer);
+  _batchPollTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch('/api/integrity/batch/status');
+      const data = await res.json();
+      _updateBatchProgress(data);
+      if (data.status === 'running') {
+        _pollBatchStatus();   // keep polling
+      } else {
+        const btn = document.getElementById('btn-batch-start');
+        btn.disabled = false;
+        btn.textContent = '🚀 Scrape All & Analyze';
+        if (data.status === 'done') {
+          toast(`✅ Batch complete — ${data.saved} competitions scraped, ${data.skipped} skipped`, 'success');
+          loadAggregateResults();
+        }
+      }
+    } catch(e) {
+      _pollBatchStatus();   // retry on network hiccup
+    }
+  }, 2000);
+}
+
+function _updateBatchProgress(data) {
+  const total = data.total || 1;
+  const pct   = Math.round((data.processed / total) * 100);
+  document.getElementById('batch-pct').textContent        = `${pct}%`;
+  document.getElementById('batch-progress-bar').style.width = `${pct}%`;
+  const statusMap = { running: '⏳ Scraping…', done: '✅ Done', error: '❌ Error', idle: '—' };
+  document.getElementById('batch-status-text').textContent =
+    `${statusMap[data.status] || data.status}  ${data.processed}/${total}  (saved: ${data.saved||0}, skipped: ${data.skipped||0})`;
+  if (data.current) {
+    document.getElementById('batch-substatus').textContent = `Current: ${data.current}`;
+  }
+}
+
+async function loadAggregateResults() {
+  const btn = document.getElementById('btn-batch-aggregate');
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading…';
+  try {
+    const res  = await fetch('/api/integrity/aggregate');
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      toast(data.message || 'Error loading aggregate', 'warning');
+      return;
+    }
+    renderAggregateResults(data);
+    document.getElementById('batch-aggregate-results').style.display = 'block';
+  } catch(e) {
+    toast('Network error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📊 Show Aggregate Results';
+  }
+}
+
+function renderAggregateResults(data) {
+  const judges = data.judge_scores || [];
+  const highCount = judges.filter(j => j.risk === 'high').length;
+  const medCount  = judges.filter(j => j.risk === 'medium').length;
+
+  // Summary
+  document.getElementById('batch-summary-row').innerHTML = `
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#0369a1">${data.multi_round_comps}</div>
+      <div style="font-size:0.75rem;color:#075985;font-weight:600">Multi-Round Comps</div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#15803d">${judges.length}</div>
+      <div style="font-size:0.75rem;color:#166534;font-weight:600">Judges Analyzed</div>
+    </div>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#dc2626">${highCount}</div>
+      <div style="font-size:0.75rem;color:#991b1b;font-weight:600">🔴 High Risk</div>
+    </div>
+    <div style="background:#fefce8;border:1px solid #fef08a;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#a16207">${medCount}</div>
+      <div style="font-size:0.75rem;color:#854d0e;font-weight:600">🟡 Medium Risk</div>
+    </div>`;
+
+  if (!judges.length) {
+    document.getElementById('batch-judge-table').innerHTML =
+      '<div style="padding:1.5rem;color:var(--gray-500)">No data yet — run Scrape All first, then try again once complete.</div>';
+    return;
+  }
+
+  // Show judges with ≥ 2 opportunities (filter out one-comp noise)
+  const meaningful = judges.filter(j => j.opportunities >= 5);
+  const rest       = judges.filter(j => j.opportunities < 5);
+
+  document.getElementById('batch-judge-table').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Judge</th>
+        <th>Divergences</th><th>Opportunities</th>
+        <th>Suspicion Index</th><th>Competitions</th><th>Risk</th>
+      </tr></thead>
+      <tbody>
+      ${[...meaningful, ...rest].map(j => {
+        const pct    = (j.index * 100).toFixed(2);
+        const bar    = Math.min(100, j.index * 500);
+        const [bg, emoji, label] =
+          j.risk === 'high'   ? ['#fee2e2','🔴','HIGH'] :
+          j.risk === 'medium' ? ['#fef9c3','🟡','MED'] :
+                                ['','🟢','low'];
+        const barCol = j.risk === 'high' ? '#dc2626' : j.risk === 'medium' ? '#d97706' : '#059669';
+        const dim    = j.opportunities < 5 ? 'opacity:0.5' : '';
+        return `<tr style="background:${bg};${dim}">
+          <td style="font-weight:600">${j.name !== j.letter ? j.name : j.name} <span style="color:var(--gray-400);font-size:0.75rem">(${j.letter})</span></td>
+          <td style="text-align:center">${j.divergences}</td>
+          <td style="text-align:center">${j.opportunities}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <div style="width:80px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                <div style="width:${bar}%;height:100%;background:${barCol};border-radius:4px"></div>
+              </div>
+              <span style="font-weight:700">${pct}%</span>
+            </div>
+          </td>
+          <td style="text-align:center">${j.n_competitions}</td>
+          <td>${emoji} ${label}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+    <div style="font-size:0.75rem;color:var(--gray-400);margin-top:0.5rem">
+      ⚠️ Judges with &lt;5 opportunities (dimmed) have insufficient data for reliable conclusions.
+    </div>`;
+}
 </script>
 </body>
 </html>

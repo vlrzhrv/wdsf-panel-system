@@ -4737,6 +4737,256 @@ def integrity_analyze():
     })
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# INTEGRITY — BATCH SCRAPE + AGGREGATE ANALYSIS
+# ══════════════════════════════════════════════════════════════════════════════
+
+_integrity_batch = {
+    "status":    "idle",   # idle | running | done | error
+    "processed": 0,
+    "total":     0,
+    "current":   "",
+    "skipped":   0,
+    "saved":     0,
+    "errors":    [],
+}
+
+
+def _ensure_round_marks_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_round_marks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug         TEXT    NOT NULL,
+            round_num    INTEGER NOT NULL,
+            judge_letter TEXT    NOT NULL,
+            judge_name   TEXT,
+            couple_num   TEXT    NOT NULL,
+            marks_count  REAL,
+            total_dances INTEGER DEFAULT 1,
+            scraped_at   TEXT,
+            UNIQUE(slug, round_num, judge_letter, couple_num)
+        )
+    """)
+    conn.commit()
+
+
+@app.route("/api/integrity/batch/start", methods=["POST"])
+def integrity_batch_start():
+    """Start background scrape of ALL scraped competitions into competition_round_marks."""
+    import threading
+    global _integrity_batch
+
+    if _integrity_batch["status"] == "running":
+        return jsonify({"ok": False, "error": "Already running"}), 409
+
+    data  = request.json or {}
+    force = bool(data.get("force", False))
+
+    def run_batch():
+        global _integrity_batch
+        _integrity_batch.update({"status": "running", "processed": 0,
+                                  "skipped": 0, "saved": 0, "errors": []})
+        try:
+            conn = get_db()
+            _ensure_round_marks_table(conn)
+
+            slugs = [r[0] for r in conn.execute(
+                "SELECT slug FROM scraped_competitions ORDER BY competition_date DESC"
+            ).fetchall()]
+            _integrity_batch["total"] = len(slugs)
+
+            for slug in slugs:
+                _integrity_batch["current"] = slug
+                try:
+                    if not force:
+                        n = conn.execute(
+                            "SELECT COUNT(DISTINCT round_num) FROM competition_round_marks WHERE slug=?",
+                            (slug,)
+                        ).fetchone()[0]
+                        if n >= 2:      # already have multi-round data
+                            _integrity_batch["skipped"] += 1
+                            _integrity_batch["processed"] += 1
+                            continue
+
+                    # Fetch officials (judge letter → name)
+                    judge_names = {}
+                    try:
+                        officials = _scrape_officials_page(slug)
+                        for ltr, info in officials.items():
+                            judge_names[ltr] = info.get("name", ltr)
+                    except Exception:
+                        pass
+
+                    # Scrape per-round scores
+                    marks = _scrape_scores_page(slug, officials=(
+                        {ltr: {"name": name} for ltr, name in judge_names.items()}
+                    ))
+
+                    if not marks:
+                        # Try Marks page as secondary source
+                        marks = _scrape_marks_page(slug)
+
+                    if marks:
+                        now = datetime.utcnow().isoformat()
+                        conn.execute("DELETE FROM competition_round_marks WHERE slug=?", (slug,))
+                        for m in marks:
+                            jltr = m["judge_letter"]
+                            conn.execute("""
+                                INSERT OR REPLACE INTO competition_round_marks
+                                    (slug, round_num, judge_letter, judge_name,
+                                     couple_num, marks_count, total_dances, scraped_at)
+                                VALUES (?,?,?,?,?,?,?,?)
+                            """, (slug, m["round_num"], jltr,
+                                  judge_names.get(jltr),
+                                  str(m.get("couple", m.get("couple_num", "?"))),
+                                  m["marks_count"],
+                                  m.get("total_dances", 1),
+                                  now))
+                        conn.commit()
+                        _integrity_batch["saved"] += 1
+
+                except Exception as e:
+                    _integrity_batch["errors"].append(f"{slug}: {str(e)[:120]}")
+
+                _integrity_batch["processed"] += 1
+
+            conn.close()
+            _integrity_batch["status"] = "done"
+        except Exception as e:
+            _integrity_batch["status"] = "error"
+            _integrity_batch["errors"].append(f"Fatal: {e}")
+
+    threading.Thread(target=run_batch, daemon=True).start()
+    return jsonify({"ok": True, "total": _integrity_batch["total"]})
+
+
+@app.route("/api/integrity/batch/status")
+def integrity_batch_status():
+    return jsonify({**_integrity_batch, "ok": True})
+
+
+@app.route("/api/integrity/aggregate")
+def integrity_aggregate():
+    """
+    Compute aggregate suspicion index per judge across ALL competitions in competition_round_marks.
+    Only uses competitions with >= 2 rounds (so divergence analysis is possible).
+    """
+    import itertools as _it, statistics as _stat
+    from collections import defaultdict as _dd
+
+    conn = get_db()
+    _ensure_round_marks_table(conn)
+
+    # Find competitions with multiple rounds
+    multi_round_slugs = [r[0] for r in conn.execute("""
+        SELECT slug FROM competition_round_marks
+        GROUP BY slug HAVING COUNT(DISTINCT round_num) >= 2
+    """).fetchall()]
+
+    if not multi_round_slugs:
+        conn.close()
+        return jsonify({
+            "ok": True,
+            "message": "No multi-round competitions in DB yet — run Batch Scrape first",
+            "multi_round_comps": 0,
+            "judge_scores": [],
+        })
+
+    # Load all marks for multi-round competitions
+    rows = conn.execute("""
+        SELECT slug, round_num, judge_letter, judge_name, couple_num, marks_count
+        FROM competition_round_marks
+        WHERE slug IN ({})
+        ORDER BY slug, round_num, couple_num, judge_letter
+    """.format(",".join("?" * len(multi_round_slugs))), multi_round_slugs).fetchall()
+
+    # Accumulate per judge: divergences and opportunities across all comps
+    judge_divergences  = _dd(int)
+    judge_opportunities = _dd(int)
+    judge_name_map     = {}   # canonical name per letter (last seen)
+    comps_per_judge    = _dd(set)
+
+    # Group by slug
+    by_slug = _dd(lambda: _dd(lambda: _dd(dict)))
+    n_judges_per_slug  = _dd(set)
+    for r in rows:
+        by_slug[r["slug"]][r["round_num"]][r["couple_num"]][r["judge_letter"]] = r["marks_count"]
+        n_judges_per_slug[r["slug"]].add(r["judge_letter"])
+        if r["judge_name"]:
+            judge_name_map[r["judge_letter"]] = r["judge_name"]
+
+    PANEL_THRESHOLD = 0.20
+    JUDGE_THRESHOLD = 0.30
+
+    for slug, data_d in by_slug.items():
+        all_rounds    = sorted(data_d.keys())
+        judge_letters = sorted(n_judges_per_slug[slug])
+        n_j           = len(judge_letters)
+        if n_j < 3:
+            continue
+
+        for ri in range(len(all_rounds) - 1):
+            r1, r2  = all_rounds[ri], all_rounds[ri + 1]
+            common  = set(data_d[r1].keys()) & set(data_d[r2].keys())
+            if not common:
+                continue
+
+            for jltr in judge_letters:
+                judge_opportunities[jltr] += len(common)
+                comps_per_judge[jltr].add(slug)
+
+            for couple in common:
+                j_r1 = data_d[r1][couple]
+                j_r2 = data_d[r2][couple]
+
+                # Normalise by max possible (use 1 since marks_count already scaled)
+                max_val = max(max(j_r1.values(), default=1),
+                              max(j_r2.values(), default=1), 1)
+                total_r1 = sum(j_r1.values()) / (n_j * max_val)
+                total_r2 = sum(j_r2.values()) / (n_j * max_val)
+                panel_delta = total_r2 - total_r1
+
+                if abs(panel_delta) < PANEL_THRESHOLD:
+                    continue
+
+                for jltr in judge_letters:
+                    m1 = j_r1.get(jltr, 0)
+                    m2 = j_r2.get(jltr, 0)
+                    norm1 = m1 / max_val
+                    norm2 = m2 / max_val
+                    judge_delta = norm2 - norm1
+
+                    if (panel_delta > PANEL_THRESHOLD and judge_delta < -JUDGE_THRESHOLD) or \
+                       (panel_delta < -PANEL_THRESHOLD and judge_delta > JUDGE_THRESHOLD):
+                        judge_divergences[jltr] += 1
+
+    # Build result
+    result = []
+    for jltr in sorted(judge_divergences.keys() | judge_opportunities.keys()):
+        div  = judge_divergences.get(jltr, 0)
+        opps = judge_opportunities.get(jltr, 1)
+        idx  = round(div / opps, 4) if opps else 0
+        result.append({
+            "letter":         jltr,
+            "name":           judge_name_map.get(jltr, jltr),
+            "divergences":    div,
+            "opportunities":  opps,
+            "index":          idx,
+            "risk":           "high" if idx > 0.08 else "medium" if idx > 0.04 else "low",
+            "n_competitions": len(comps_per_judge[jltr]),
+        })
+
+    result.sort(key=lambda x: (-x["index"], -x["opportunities"]))
+    conn.close()
+
+    return jsonify({
+        "ok":               True,
+        "multi_round_comps": len(multi_round_slugs),
+        "total_comps":      len(by_slug),
+        "judge_scores":     result,
+    })
+
+
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")

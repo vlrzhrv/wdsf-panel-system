@@ -5187,10 +5187,12 @@ def countries_batch_start():
             conn = get_db()
             _ensure_couple_results_table(conn)
 
+            # competition_date is often NULL (date not in slug); scrape all,
+            # filter by year only when the date is known
             slugs = [r[0] for r in conn.execute("""
                 SELECT slug FROM scraped_competitions
-                WHERE competition_date >= ?
-                ORDER BY competition_date DESC
+                WHERE competition_date IS NULL OR competition_date >= ?
+                ORDER BY COALESCE(competition_date,'') DESC
             """, (f"{since_year}-01-01",)).fetchall()]
 
             _countries_batch["total"] = len(slugs)
@@ -5270,8 +5272,8 @@ def countries_stats():
     conn = get_db()
     _ensure_couple_results_table(conn)
 
-    # Get relevant slugs
-    q  = "SELECT slug, competition_name, discipline FROM scraped_competitions WHERE competition_date >= ?"
+    # Get relevant slugs — competition_date is often NULL, include those too
+    q    = "SELECT slug, competition_name, discipline FROM scraped_competitions WHERE competition_date IS NULL OR competition_date >= ?"
     args = [f"{since_year}-01-01"]
     if discipline:
         q += " AND discipline = ?"

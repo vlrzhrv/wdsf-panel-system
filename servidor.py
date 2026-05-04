@@ -5012,11 +5012,35 @@ def _ensure_couple_results_table(conn):
     conn.commit()
 
 
+def _extract_countries_from_row(row):
+    """Extract IOC country codes from a table row (flag images or CSS class flags)."""
+    import re as _re
+    countries = []
+    # 1. img tags with title/alt containing country code
+    for img in row.find_all("img"):
+        code = (img.get("title") or img.get("alt") or "").strip().upper()
+        if 2 <= len(code) <= 4 and code.isalpha():
+            countries.append(code)
+    # 2. CSS class-based flag icons (e.g. fi-rou, flag-icon-rou)
+    if not countries:
+        for span in row.find_all(["span", "i"], class_=True):
+            cls = " ".join(span.get("class", []))
+            m = _re.search(r'(?:fi-|flag-icon-|flag-)([a-z]{2,3})\b', cls)
+            if m:
+                countries.append(m.group(1).upper())
+    return countries
+
+
 def _scrape_couple_results(slug):
     """
     Fetch couple placements + countries from /Competitions/Results/{slug}.
-    Returns list of {round_num, place, couple_num, couple_name, country_a, country_b, score}.
-    round_num: 1,2,3... = qualifying; 99 = Final.
+
+    The WDSF Results page has one big table (like _scrape_marks_page) where
+    each data row contains [couple_num, round_num, ...judge cols..., total].
+    The round_num is an integer cell in the row — the highest round per slug
+    is considered the Final.
+
+    Returns list of {round_num, place, couple_num, country_a, country_b}.
     """
     url = f"https://www.worlddancesport.org/Competitions/Results/{slug}"
     try:
@@ -5028,131 +5052,93 @@ def _scrape_couple_results(slug):
 
     from bs4 import BeautifulSoup as _BS
     soup   = _BS(r.text, "html.parser")
-    body   = (soup.find("div", {"id": "content"}) or
-              soup.find("main") or soup.body)
-    if not body:
+    tables = soup.find_all("table")
+    if not tables:
         return []
 
-    results       = []
-    current_round = None
+    results = []
 
-    for elem in body.find_all(["h2", "h3", "table"]):
-        if elem.name in ("h2", "h3"):
-            txt = elem.get_text(strip=True)
-            if txt == "Final":
-                current_round = 99
-            elif ". Round" in txt:
+    for table in tables:
+        rows = table.find_all("tr")
+        if len(rows) < 3:
+            continue
+
+        # ── Strategy A: look for the judge-letters header row ─────────────
+        # (same pattern as _scrape_marks_page — columns A,B,C,D... ≥9 entries)
+        judge_header_idx  = None
+        judge_col_entries = []   # [(col_idx, letter), ...]
+
+        for ri, row in enumerate(rows[:8]):
+            cells = [th.get_text(strip=True) for th in row.find_all(["th","td"])]
+            entries = [(i, c) for i, c in enumerate(cells)
+                       if c and c.isalpha() and c.isupper()
+                       and 1 <= len(c) <= 4 and c not in ("=",)]
+            if len(entries) >= 9:
+                judge_header_idx  = ri
+                judge_col_entries = entries
+                break
+
+        if judge_header_idx is not None:
+            # Known column positions (mirroring _scrape_marks_page)
+            first_judge_col = judge_col_entries[0][0]
+            couple_col_idx  = max(0, first_judge_col - 2)
+            round_col_idx   = max(0, first_judge_col - 1)
+
+            current_couple = None
+            for row in rows[judge_header_idx + 1:]:
+                cells = row.find_all(["td","th"])
+                if len(cells) < first_judge_col:
+                    continue
+                # Couple number (carry-forward when empty / rowspan)
+                couple_txt = cells[couple_col_idx].get_text(strip=True) if couple_col_idx < len(cells) else ""
+                if couple_txt and couple_txt.isdigit():
+                    current_couple = couple_txt
+                if not current_couple:
+                    continue
+                # Round number
+                round_txt = cells[round_col_idx].get_text(strip=True) if round_col_idx < len(cells) else ""
                 try:
-                    current_round = int(txt.split(".")[0].strip())
-                except ValueError:
-                    current_round = None
-            # Ignore sub-headings that don't set the round
-            continue
-
-        if elem.name != "table" or current_round is None:
-            continue
-
-        rows = elem.find_all("tr")
-        if len(rows) < 2:
-            continue
-
-        # ── Identify column positions from header row ──────────────────────
-        header = rows[0]
-        hcells = header.find_all(["th", "td"])
-        htext  = [c.get_text(strip=True).lower() for c in hcells]
-
-        place_col   = next((i for i,h in enumerate(htext) if h in ("pl.","pl","place","rank","#")), None)
-        cplno_col   = next((i for i,h in enumerate(htext) if "no" in h or "cpl" in h), None)
-        couple_col  = next((i for i,h in enumerate(htext)
-                            if "couple" in h or "name" in h or "partner" in h), None)
-        country_col = next((i for i,h in enumerate(htext)
-                            if "country" in h or "nat" in h or "flag" in h), None)
-        score_col   = next((i for i,h in enumerate(htext)
-                            if h in ("total","score","pts","points","sum")), None)
-
-        # ── Parse data rows ────────────────────────────────────────────────
-        for row in rows[1:]:
-            cells = row.find_all(["td","th"])
-            if len(cells) < 2:
-                continue
-
-            # Place
-            place = None
-            if place_col is not None and place_col < len(cells):
-                txt = cells[place_col].get_text(strip=True).rstrip(".")
-                try:
-                    place = int(txt)
+                    round_num = int(round_txt)
                 except Exception:
-                    pass
-
-            # Couple number
-            couple_num = ""
-            if cplno_col is not None and cplno_col < len(cells):
-                couple_num = cells[cplno_col].get_text(strip=True)
-            elif place_col is not None:
-                # Fallback: look for a numeric cell early in the row
-                for ci, c in enumerate(cells[:4]):
-                    t = c.get_text(strip=True)
-                    if t.isdigit() and ci != place_col:
-                        couple_num = t
-                        break
-
-            # Couple name
-            couple_name = ""
-            if couple_col is not None and couple_col < len(cells):
-                couple_name = cells[couple_col].get_text(separator=" ", strip=True)[:120]
-
-            # Country — may be img flags or text spans
-            country_a = country_b = ""
-            if country_col is not None and country_col < len(cells):
-                cell = cells[country_col]
-                # img flags: title or alt contains country code
-                imgs = cell.find_all("img")
-                countries = []
-                for img in imgs:
-                    code = (img.get("title") or img.get("alt") or "").strip().upper()
-                    if 2 <= len(code) <= 4 and code.isalpha():
-                        countries.append(code)
-                if countries:
-                    country_a = countries[0]
-                    country_b = countries[1] if len(countries) > 1 else countries[0]
-                else:
-                    # Plain text country code (e.g. "GER / FRA" or just "ROU")
-                    txt = cell.get_text(separator="/", strip=True).upper()
-                    parts = [p.strip() for p in txt.split("/") if p.strip()]
-                    if parts:
-                        country_a = parts[0][:4]
-                        country_b = parts[1][:4] if len(parts) > 1 else parts[0][:4]
-            else:
-                # Scan all cells for flag images
-                all_imgs = row.find_all("img")
-                countries = []
-                for img in all_imgs:
-                    code = (img.get("title") or img.get("alt") or "").strip().upper()
-                    if 2 <= len(code) <= 4 and code.isalpha():
-                        countries.append(code)
-                if countries:
-                    country_a = countries[0]
-                    country_b = countries[1] if len(countries) > 1 else countries[0]
-
-            # Score
-            score = None
-            if score_col is not None and score_col < len(cells):
-                try:
-                    score = float(cells[score_col].get_text(strip=True).replace(",","."))
-                except Exception:
-                    pass
-
-            if country_a or couple_num:
+                    continue
+                # Countries from flag images / CSS flags anywhere in this row
+                countries = _extract_countries_from_row(row)
                 results.append({
-                    "round_num":   current_round,
-                    "place":       place,
-                    "couple_num":  couple_num,
-                    "couple_name": couple_name,
-                    "country_a":   country_a,
-                    "country_b":   country_b,
-                    "score":       score,
+                    "round_num":  round_num,
+                    "place":      None,   # will derive from highest round later
+                    "couple_num": current_couple,
+                    "country_a":  countries[0] if countries else "",
+                    "country_b":  countries[1] if len(countries) > 1 else (countries[0] if countries else ""),
                 })
+            continue   # done with this table
+
+        # ── Strategy B: simple placement table (no judge columns) ─────────
+        # Scan every row for flag images; collect place + couple_num
+        for row in rows[1:]:
+            countries = _extract_countries_from_row(row)
+            if not countries:
+                continue
+            cells = row.find_all(["td","th"])
+            texts = [c.get_text(strip=True) for c in cells]
+            nums  = [t for t in texts if t.isdigit()]
+            place     = int(nums[0]) if nums else None
+            couple_num = nums[1] if len(nums) > 1 else ""
+            results.append({
+                "round_num":  99,   # no round info → assume Final
+                "place":      place,
+                "couple_num": couple_num,
+                "country_a":  countries[0],
+                "country_b":  countries[1] if len(countries) > 1 else countries[0],
+            })
+
+    # ── Post-process: mark highest round_num per slug as the "Final" (99) ──
+    # (The Results page uses actual round numbers 1,2,3... not 99)
+    if results:
+        max_rnd = max(r["round_num"] for r in results)
+        if max_rnd != 99:
+            for r in results:
+                if r["round_num"] == max_rnd:
+                    r["round_num"] = 99
 
     return results
 

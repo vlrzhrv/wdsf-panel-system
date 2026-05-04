@@ -4987,6 +4987,424 @@ def integrity_aggregate():
     })
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# COUNTRY RESULTS ANALYSIS
+# Scrapes couple placements + countries from competition results pages.
+# Answers: "Is Romania statistically over-represented in finals/podiums/wins?"
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _ensure_couple_results_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS competition_couple_results (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug         TEXT    NOT NULL,
+            round_num    INTEGER NOT NULL,   -- 1,2,3...=qualifying; 99=Final
+            place        INTEGER,            -- finishing place (NULL if just qualified)
+            couple_num   TEXT,
+            couple_name  TEXT,
+            country_a    TEXT,               -- country of dancer A (3-letter IOC code)
+            country_b    TEXT,               -- country of dancer B (same couple, 2nd dancer)
+            score        REAL,
+            scraped_at   TEXT,
+            UNIQUE(slug, round_num, couple_num)
+        )
+    """)
+    conn.commit()
+
+
+def _scrape_couple_results(slug):
+    """
+    Fetch couple placements + countries from /Competitions/Results/{slug}.
+    Returns list of {round_num, place, couple_num, couple_name, country_a, country_b, score}.
+    round_num: 1,2,3... = qualifying; 99 = Final.
+    """
+    url = f"https://www.worlddancesport.org/Competitions/Results/{slug}"
+    try:
+        r = requests.get(url, timeout=25,
+                         headers={"User-Agent": "Mozilla/5.0 WDSF-PanelSystem/1.0"})
+        r.raise_for_status()
+    except Exception:
+        return []
+
+    from bs4 import BeautifulSoup as _BS
+    soup   = _BS(r.text, "html.parser")
+    body   = (soup.find("div", {"id": "content"}) or
+              soup.find("main") or soup.body)
+    if not body:
+        return []
+
+    results       = []
+    current_round = None
+
+    for elem in body.find_all(["h2", "h3", "table"]):
+        if elem.name in ("h2", "h3"):
+            txt = elem.get_text(strip=True)
+            if txt == "Final":
+                current_round = 99
+            elif ". Round" in txt:
+                try:
+                    current_round = int(txt.split(".")[0].strip())
+                except ValueError:
+                    current_round = None
+            # Ignore sub-headings that don't set the round
+            continue
+
+        if elem.name != "table" or current_round is None:
+            continue
+
+        rows = elem.find_all("tr")
+        if len(rows) < 2:
+            continue
+
+        # ── Identify column positions from header row ──────────────────────
+        header = rows[0]
+        hcells = header.find_all(["th", "td"])
+        htext  = [c.get_text(strip=True).lower() for c in hcells]
+
+        place_col   = next((i for i,h in enumerate(htext) if h in ("pl.","pl","place","rank","#")), None)
+        cplno_col   = next((i for i,h in enumerate(htext) if "no" in h or "cpl" in h), None)
+        couple_col  = next((i for i,h in enumerate(htext)
+                            if "couple" in h or "name" in h or "partner" in h), None)
+        country_col = next((i for i,h in enumerate(htext)
+                            if "country" in h or "nat" in h or "flag" in h), None)
+        score_col   = next((i for i,h in enumerate(htext)
+                            if h in ("total","score","pts","points","sum")), None)
+
+        # ── Parse data rows ────────────────────────────────────────────────
+        for row in rows[1:]:
+            cells = row.find_all(["td","th"])
+            if len(cells) < 2:
+                continue
+
+            # Place
+            place = None
+            if place_col is not None and place_col < len(cells):
+                txt = cells[place_col].get_text(strip=True).rstrip(".")
+                try:
+                    place = int(txt)
+                except Exception:
+                    pass
+
+            # Couple number
+            couple_num = ""
+            if cplno_col is not None and cplno_col < len(cells):
+                couple_num = cells[cplno_col].get_text(strip=True)
+            elif place_col is not None:
+                # Fallback: look for a numeric cell early in the row
+                for ci, c in enumerate(cells[:4]):
+                    t = c.get_text(strip=True)
+                    if t.isdigit() and ci != place_col:
+                        couple_num = t
+                        break
+
+            # Couple name
+            couple_name = ""
+            if couple_col is not None and couple_col < len(cells):
+                couple_name = cells[couple_col].get_text(separator=" ", strip=True)[:120]
+
+            # Country — may be img flags or text spans
+            country_a = country_b = ""
+            if country_col is not None and country_col < len(cells):
+                cell = cells[country_col]
+                # img flags: title or alt contains country code
+                imgs = cell.find_all("img")
+                countries = []
+                for img in imgs:
+                    code = (img.get("title") or img.get("alt") or "").strip().upper()
+                    if 2 <= len(code) <= 4 and code.isalpha():
+                        countries.append(code)
+                if countries:
+                    country_a = countries[0]
+                    country_b = countries[1] if len(countries) > 1 else countries[0]
+                else:
+                    # Plain text country code (e.g. "GER / FRA" or just "ROU")
+                    txt = cell.get_text(separator="/", strip=True).upper()
+                    parts = [p.strip() for p in txt.split("/") if p.strip()]
+                    if parts:
+                        country_a = parts[0][:4]
+                        country_b = parts[1][:4] if len(parts) > 1 else parts[0][:4]
+            else:
+                # Scan all cells for flag images
+                all_imgs = row.find_all("img")
+                countries = []
+                for img in all_imgs:
+                    code = (img.get("title") or img.get("alt") or "").strip().upper()
+                    if 2 <= len(code) <= 4 and code.isalpha():
+                        countries.append(code)
+                if countries:
+                    country_a = countries[0]
+                    country_b = countries[1] if len(countries) > 1 else countries[0]
+
+            # Score
+            score = None
+            if score_col is not None and score_col < len(cells):
+                try:
+                    score = float(cells[score_col].get_text(strip=True).replace(",","."))
+                except Exception:
+                    pass
+
+            if country_a or couple_num:
+                results.append({
+                    "round_num":   current_round,
+                    "place":       place,
+                    "couple_num":  couple_num,
+                    "couple_name": couple_name,
+                    "country_a":   country_a,
+                    "country_b":   country_b,
+                    "score":       score,
+                })
+
+    return results
+
+
+_countries_batch = {
+    "status":    "idle",
+    "processed": 0,
+    "total":     0,
+    "current":   "",
+    "saved":     0,
+    "errors":    [],
+}
+
+
+@app.route("/api/countries/batch/start", methods=["POST"])
+def countries_batch_start():
+    """Batch-scrape couple results for all competitions into competition_couple_results."""
+    import threading
+    global _countries_batch
+
+    if _countries_batch["status"] == "running":
+        return jsonify({"ok": False, "error": "Already running"}), 409
+
+    data        = request.json or {}
+    force       = bool(data.get("force", False))
+    since_year  = int(data.get("since_year", 2022))   # default: last ~3 years
+
+    def run():
+        global _countries_batch
+        _countries_batch.update({"status":"running","processed":0,"saved":0,"errors":[]})
+        try:
+            conn = get_db()
+            _ensure_couple_results_table(conn)
+
+            slugs = [r[0] for r in conn.execute("""
+                SELECT slug FROM scraped_competitions
+                WHERE competition_date >= ?
+                ORDER BY competition_date DESC
+            """, (f"{since_year}-01-01",)).fetchall()]
+
+            _countries_batch["total"] = len(slugs)
+
+            for slug in slugs:
+                _countries_batch["current"] = slug
+                try:
+                    if not force:
+                        n = conn.execute(
+                            "SELECT COUNT(*) FROM competition_couple_results WHERE slug=?",
+                            (slug,)
+                        ).fetchone()[0]
+                        if n > 0:
+                            _countries_batch["processed"] += 1
+                            continue
+
+                    rows = _scrape_couple_results(slug)
+                    if rows:
+                        now = datetime.utcnow().isoformat()
+                        conn.execute(
+                            "DELETE FROM competition_couple_results WHERE slug=?", (slug,))
+                        for row in rows:
+                            conn.execute("""
+                                INSERT OR REPLACE INTO competition_couple_results
+                                    (slug, round_num, place, couple_num, couple_name,
+                                     country_a, country_b, score, scraped_at)
+                                VALUES (?,?,?,?,?,?,?,?,?)
+                            """, (slug, row["round_num"], row["place"],
+                                  row["couple_num"], row["couple_name"],
+                                  row["country_a"], row["country_b"],
+                                  row["score"], now))
+                        conn.commit()
+                        _countries_batch["saved"] += 1
+
+                except Exception as e:
+                    _countries_batch["errors"].append(f"{slug}: {str(e)[:100]}")
+
+                _countries_batch["processed"] += 1
+
+            conn.close()
+            _countries_batch["status"] = "done"
+        except Exception as e:
+            _countries_batch["status"] = "error"
+            _countries_batch["errors"].append(f"Fatal: {e}")
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/countries/batch/status")
+def countries_batch_status():
+    return jsonify({**_countries_batch, "ok": True})
+
+
+@app.route("/api/countries/stats")
+def countries_stats():
+    """
+    Compute per-country statistics across all scraped competitions.
+    Returns overrepresentation ratios, wins, podiums, finals appearances.
+
+    Statistical method:
+      For each competition with a final (round_num=99):
+        - starters  = couples in round 1 (or earliest available round)
+        - finalists = couples in round 99
+      Expected finalist rate per country = country_starters / total_starters
+      Observed finalist rate = country_finalists / total_final_slots
+      Overrep ratio = observed / expected  (>1 = over-represented)
+      Z-score for binomial test
+    """
+    import math, statistics as _stat
+    from collections import defaultdict as _dd
+
+    discipline  = request.args.get("discipline", "")   # "" = all
+    since_year  = request.args.get("since_year", "2022")
+    age_group   = request.args.get("age_group", "")    # filter on comp name keyword
+
+    conn = get_db()
+    _ensure_couple_results_table(conn)
+
+    # Get relevant slugs
+    q  = "SELECT slug, competition_name, discipline FROM scraped_competitions WHERE competition_date >= ?"
+    args = [f"{since_year}-01-01"]
+    if discipline:
+        q += " AND discipline = ?"
+        args.append(discipline)
+    slugs_info = {r[0]: {"name": r[1], "discipline": r[2]}
+                  for r in conn.execute(q, args).fetchall()}
+
+    if age_group:
+        slugs_info = {s: v for s, v in slugs_info.items()
+                      if age_group.lower() in (v["name"] or "").lower()}
+
+    if not slugs_info:
+        conn.close()
+        return jsonify({"ok": True, "countries": [], "total_comps": 0})
+
+    slug_list = list(slugs_info.keys())
+
+    rows = conn.execute("""
+        SELECT slug, round_num, place, couple_num, country_a, country_b
+        FROM competition_couple_results
+        WHERE slug IN ({})
+          AND (country_a != '' OR country_b != '')
+        ORDER BY slug, round_num, place
+    """.format(",".join("?"*len(slug_list))), slug_list).fetchall()
+    conn.close()
+
+    # Group by slug → round → list of (country_a, country_b, place)
+    by_slug = _dd(lambda: _dd(list))
+    for r in rows:
+        by_slug[r["slug"]][r["round_num"]].append(
+            (r["country_a"] or r["country_b"], r["place"])
+        )
+
+    # Per-country accumulators
+    starts     = _dd(int)   # in first round
+    finals     = _dd(int)   # in round 99
+    podiums    = _dd(int)   # place <= 3
+    wins       = _dd(int)   # place == 1
+    comp_wins  = _dd(set)   # competitions won
+    comps_entered = _dd(set)
+
+    total_starts = 0
+    total_finals = 0
+    n_comps_with_data = 0
+
+    for slug, rounds in by_slug.items():
+        if not rounds:
+            continue
+        n_comps_with_data += 1
+
+        # First round = smallest round_num (baseline country distribution)
+        first_rnd = min(rounds.keys())
+        for country, _ in rounds[first_rnd]:
+            if country:
+                starts[country] += 1
+                comps_entered[country].add(slug)
+                total_starts += 1
+
+        # Final = round 99
+        if 99 in rounds:
+            total_finals += len(rounds[99])
+            for country, place in rounds[99]:
+                if not country:
+                    continue
+                finals[country] += 1
+                if place is not None and place <= 3:
+                    podiums[country] += 1
+                if place == 1:
+                    wins[country] += 1
+                    comp_wins[country].add(slug)
+
+    if total_starts == 0:
+        return jsonify({"ok": True, "countries": [], "total_comps": n_comps_with_data,
+                        "message": "No couple/country data found — run batch scrape first"})
+
+    # Compute statistics per country
+    # Expected finals = (starts[c] / total_starts) × total_finals
+    # Binomial Z-score: (observed - expected) / sqrt(expected × (1 - p_expected))
+    result = []
+    p_overall_final = total_finals / max(total_starts, 1)
+
+    for country in sorted(set(list(starts.keys()) + list(finals.keys()))):
+        n_starts   = starts.get(country, 0)
+        n_finals   = finals.get(country, 0)
+        n_podiums  = podiums.get(country, 0)
+        n_wins     = wins.get(country, 0)
+        n_comps    = len(comps_entered.get(country, set()))
+
+        p_exp      = n_starts / total_starts if total_starts else 0
+        exp_finals = p_exp * total_finals
+        obs_rate   = n_finals / total_finals if total_finals else 0
+        exp_rate   = p_exp
+
+        # Overrepresentation ratio
+        overrep = round(obs_rate / exp_rate, 2) if exp_rate > 0 else None
+
+        # Binomial Z-score for finals
+        sigma = math.sqrt(total_finals * p_exp * (1 - p_exp)) if total_finals and p_exp else 0
+        z_finals = round((n_finals - exp_finals) / sigma, 2) if sigma > 0 else None
+
+        # Win rate
+        win_rate = round(n_wins / n_comps * 100, 1) if n_comps else 0
+
+        result.append({
+            "country":       country,
+            "starts":        n_starts,
+            "finals":        n_finals,
+            "podiums":       n_podiums,
+            "wins":          n_wins,
+            "n_comps":       n_comps,
+            "exp_finals":    round(exp_finals, 1),
+            "overrep":       overrep,
+            "z_finals":      z_finals,
+            "final_rate_pct": round(obs_rate * 100, 1),
+            "exp_rate_pct":  round(exp_rate * 100, 1),
+            "win_rate_pct":  win_rate,
+        })
+
+    # Sort by wins desc, then finals
+    result.sort(key=lambda x: (-x["wins"], -x["finals"]))
+
+    return jsonify({
+        "ok":              True,
+        "total_comps":     n_comps_with_data,
+        "total_starts":    total_starts,
+        "total_finals":    total_finals,
+        "countries":       result,
+        "discipline":      discipline,
+        "since_year":      since_year,
+        "age_group":       age_group,
+    })
+
+
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")

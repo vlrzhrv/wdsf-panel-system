@@ -281,6 +281,7 @@
   <button class="nav-btn" onclick="showPage('assign')">🎯 Assignment</button>
   <button class="nav-btn" onclick="showPage('nominations')">🌐 WDSF Nominees</button>
   <button class="nav-btn" onclick="showPage('history'); loadCorrelations()">📈 Judge History</button>
+  <button class="nav-btn" onclick="showPage('countries')">🌍 Country Stats</button>
 </nav>
 
 <div id="toast"></div>
@@ -868,6 +869,125 @@
     </div>
   </div>
 
+</div>
+
+<!-- ═══════════════════ COUNTRY STATS ═══════════════════ -->
+<div id="page-countries" class="page">
+  <div class="page-header">
+    <div class="page-title">🌍 Country Results Analysis</div>
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom:1.5rem;font-size:0.85rem">
+    <strong>Method:</strong> For each competition we compare the country distribution in
+    <strong>Round 1</strong> (all couples who started) vs. the <strong>Final</strong>
+    (couples who qualified). The <em>overrepresentation ratio</em> = observed final rate ÷ expected
+    final rate based on entries. A Z-score &gt; 2.0 is statistically significant (p &lt; 0.05).
+    Data sourced from WDSF official results pages.
+  </div>
+
+  <!-- Step 1: Batch scrape -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">⬇️ Step 1 — Scrape Couple Results</div>
+    <div style="font-size:0.82rem;color:var(--gray-500);margin-bottom:0.8rem">
+      Fetches couple placements and country flags from all WDSF results pages.
+      Run once — takes 5–15 min. Results persist in the database.
+    </div>
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:0.8rem">
+      <div>
+        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Since year</label>
+        <select id="cr-since-year" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
+          <option value="2022">2022 (last 3 yrs)</option>
+          <option value="2021">2021 (last 4 yrs)</option>
+          <option value="2020">2020 (last 5 yrs)</option>
+          <option value="2018">2018 (last 7 yrs)</option>
+        </select>
+      </div>
+      <div style="padding-top:1.3rem">
+        <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+          <input type="checkbox" id="cr-force"> Force re-scrape
+        </label>
+      </div>
+      <div style="padding-top:1.3rem">
+        <button class="btn btn-primary" onclick="startCountryBatch()" id="btn-cr-start">
+          🚀 Start Scraping
+        </button>
+      </div>
+    </div>
+    <!-- Progress -->
+    <div id="cr-progress-wrap" style="display:none">
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem">
+        <span id="cr-status-text">Starting…</span>
+        <span id="cr-pct">0%</span>
+      </div>
+      <div style="height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden">
+        <div id="cr-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#059669,#10b981);border-radius:6px;transition:width 0.5s"></div>
+      </div>
+      <div id="cr-substatus" style="font-size:0.75rem;color:var(--gray-400);margin-top:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+    </div>
+  </div>
+
+  <!-- Step 2: Analyze -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title">📊 Step 2 — Analyze Results</div>
+    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:0.8rem">
+      <div>
+        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Discipline</label>
+        <select id="cr-discipline" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
+          <option value="">All disciplines</option>
+          <option value="Standard">Standard</option>
+          <option value="Latin">Latin</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Age group (keyword)</label>
+        <input id="cr-age-group" type="text" placeholder="Adult, Junior, Youth, Senior…"
+          style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem;width:160px">
+      </div>
+      <div>
+        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Since year</label>
+        <select id="cr-since-year2" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
+          <option value="2022">2022</option>
+          <option value="2021">2021</option>
+          <option value="2020">2020</option>
+          <option value="2018">2018</option>
+        </select>
+      </div>
+      <div style="padding-top:1.3rem">
+        <button class="btn btn-primary" onclick="loadCountryStats()" id="btn-cr-analyze">
+          🔬 Analyze
+        </button>
+      </div>
+    </div>
+    <div id="cr-analyze-status" style="font-size:0.85rem;color:var(--gray-500)"></div>
+  </div>
+
+  <!-- Results -->
+  <div id="cr-results" style="display:none">
+
+    <!-- Summary bar -->
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="cr-summary-row"></div>
+
+    <!-- Highlight box: Romania & any other outlier -->
+    <div id="cr-highlight-box" style="margin-bottom:1.5rem"></div>
+
+    <!-- Full table -->
+    <div class="card">
+      <div class="card-title">🏆 All Countries — Ranked by Wins
+        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
+          Countries with ≥2 final appearances shown with full stats · Z &gt; 2.0 flagged 🚨
+        </span>
+      </div>
+      <div style="margin-bottom:0.75rem;display:flex;gap:0.75rem;align-items:center">
+        <input id="cr-filter" type="text" class="form-input" style="max-width:200px"
+          placeholder="Filter country…" oninput="filterCountryTable()">
+        <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
+          <input type="checkbox" id="cr-only-significant" onchange="filterCountryTable()">
+          Only statistically significant (|Z| &gt; 2.0)
+        </label>
+      </div>
+      <div id="cr-main-table" class="table-wrap"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════ MODAL EVENTO ═══════════════════ -->
@@ -3977,6 +4097,246 @@ function renderAggregateResults(data) {
     <div style="font-size:0.75rem;color:var(--gray-400);margin-top:0.5rem">
       ⚠️ Judges with &lt;5 opportunities (dimmed) have insufficient data for reliable conclusions.
     </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// COUNTRY STATS PAGE
+// ══════════════════════════════════════════════════════════════
+
+let _crPollTimer  = null;
+let _crStatsData  = null;
+
+async function startCountryBatch() {
+  const force     = document.getElementById('cr-force').checked;
+  const sinceYear = document.getElementById('cr-since-year').value;
+  const btn       = document.getElementById('btn-cr-start');
+  btn.disabled    = true;
+  btn.textContent = '⏳ Starting…';
+
+  try {
+    const res = await fetch('/api/countries/batch/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ force, since_year: parseInt(sinceYear) })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.error || 'Could not start', 'error');
+      btn.disabled = false;
+      btn.textContent = '🚀 Start Scraping';
+      return;
+    }
+    document.getElementById('cr-progress-wrap').style.display = 'block';
+    _pollCrStatus();
+  } catch(e) {
+    toast('Network error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '🚀 Start Scraping';
+  }
+}
+
+function _pollCrStatus() {
+  clearTimeout(_crPollTimer);
+  _crPollTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch('/api/countries/batch/status');
+      const data = await res.json();
+      _updateCrProgress(data);
+      if (data.status === 'running') {
+        _pollCrStatus();
+      } else {
+        const btn = document.getElementById('btn-cr-start');
+        btn.disabled = false;
+        btn.textContent = '🚀 Start Scraping';
+        if (data.status === 'done') {
+          toast(`✅ Scraping done — ${data.saved} competitions saved`, 'success');
+          loadCountryStats();
+        }
+      }
+    } catch(e) {
+      _pollCrStatus();
+    }
+  }, 2500);
+}
+
+function _updateCrProgress(data) {
+  const total = data.total || 1;
+  const pct   = Math.round((data.processed / total) * 100);
+  document.getElementById('cr-pct').textContent          = `${pct}%`;
+  document.getElementById('cr-progress-bar').style.width = `${pct}%`;
+  const s = data.status === 'running' ? '⏳' : data.status === 'done' ? '✅' : '❌';
+  document.getElementById('cr-status-text').textContent  =
+    `${s} ${data.processed}/${total}  saved: ${data.saved||0}`;
+  if (data.current)
+    document.getElementById('cr-substatus').textContent  = data.current;
+}
+
+async function loadCountryStats() {
+  const disc     = document.getElementById('cr-discipline').value;
+  const ageGroup = document.getElementById('cr-age-group').value.trim();
+  const since    = document.getElementById('cr-since-year2').value;
+  const btn      = document.getElementById('btn-cr-analyze');
+  const status   = document.getElementById('cr-analyze-status');
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Analyzing…';
+  status.textContent = 'Loading data…';
+
+  try {
+    const params = new URLSearchParams({ since_year: since });
+    if (disc)     params.set('discipline', disc);
+    if (ageGroup) params.set('age_group',  ageGroup);
+
+    const res  = await fetch('/api/countries/stats?' + params.toString());
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      status.textContent = data.message || 'Error loading stats';
+      return;
+    }
+
+    _crStatsData = data;
+
+    if (!data.countries || !data.countries.length) {
+      status.textContent = data.message || 'No data yet — run Step 1 first.';
+      return;
+    }
+
+    status.textContent = '';
+    renderCountryResults(data);
+    document.getElementById('cr-results').style.display = 'block';
+
+  } catch(e) {
+    status.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔬 Analyze';
+  }
+}
+
+function renderCountryResults(data) {
+  const countries = data.countries || [];
+
+  // ── Summary row ─────────────────────────────────────────────
+  const totalCountries = countries.length;
+  const sigCount = countries.filter(c => c.z_finals !== null && Math.abs(c.z_finals) > 2).length;
+  const topWinner = countries[0];
+
+  document.getElementById('cr-summary-row').innerHTML = `
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#0369a1">${data.total_comps}</div>
+      <div style="font-size:0.75rem;color:#075985;font-weight:600">Competitions</div>
+    </div>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#15803d">${totalCountries}</div>
+      <div style="font-size:0.75rem;color:#166534;font-weight:600">Countries</div>
+    </div>
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#c2410c">${data.total_starts}</div>
+      <div style="font-size:0.75rem;color:#9a3412;font-weight:600">Total Starters</div>
+    </div>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
+      <div style="font-size:1.6rem;font-weight:700;color:#dc2626">${sigCount}</div>
+      <div style="font-size:0.75rem;color:#991b1b;font-weight:600">Statistically Anomalous</div>
+    </div>`;
+
+  // ── Highlight box: Romania + other top outliers ──────────────
+  const highlights = countries.filter(c =>
+    (c.country === 'ROU' || c.country === 'ROM') ||
+    (c.z_finals !== null && c.z_finals > 3 && c.finals >= 5)
+  ).slice(0, 5);
+
+  const hlBox = document.getElementById('cr-highlight-box');
+  if (highlights.length) {
+    hlBox.innerHTML = `
+      <div style="background:#fef9c3;border:2px solid #fde047;border-radius:12px;padding:1.2rem 1.5rem">
+        <div style="font-size:0.9rem;font-weight:700;color:#a16207;margin-bottom:0.8rem">
+          🔍 Statistical Outliers — Countries significantly over-represented in finals
+        </div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap">
+          ${highlights.map(c => _countryHighlightCard(c)).join('')}
+        </div>
+      </div>`;
+  } else {
+    hlBox.innerHTML = '';
+  }
+
+  // ── Main table ────────────────────────────────────────────────
+  _renderCountryTable(countries);
+}
+
+function _countryHighlightCard(c) {
+  const overrep = c.overrep !== null ? `${c.overrep}×` : '—';
+  const z       = c.z_finals !== null ? c.z_finals.toFixed(1) : '—';
+  const risk    = c.z_finals > 4 ? '#dc2626' : c.z_finals > 2 ? '#d97706' : '#059669';
+  return `<div style="background:white;border:1px solid #fde047;border-radius:8px;padding:0.8rem 1rem;min-width:180px">
+    <div style="font-size:1.1rem;font-weight:800;color:#1f2937">${c.country}</div>
+    <div style="font-size:0.8rem;color:#374151;margin-top:0.2rem">
+      🏆 ${c.wins} wins &nbsp;·&nbsp; 🥇🥈🥉 ${c.podiums} podiums<br>
+      🎯 ${c.finals} finals (exp. ${c.exp_finals})<br>
+      📊 Overrep: <strong>${overrep}</strong> &nbsp;
+      Z: <strong style="color:${risk}">${z}</strong>
+    </div>
+  </div>`;
+}
+
+function _renderCountryTable(countries) {
+  const filter = (document.getElementById('cr-filter')?.value || '').toLowerCase();
+  const onlySig = document.getElementById('cr-only-significant')?.checked;
+
+  let filtered = countries.filter(c => {
+    if (filter && !c.country.toLowerCase().includes(filter)) return false;
+    if (onlySig && (c.z_finals === null || Math.abs(c.z_finals) <= 2)) return false;
+    return true;
+  });
+
+  const el = document.getElementById('cr-main-table');
+  if (!filtered.length) {
+    el.innerHTML = '<div style="padding:1.5rem;color:var(--gray-500)">No countries match the filter.</div>';
+    return;
+  }
+
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>#</th><th>Country</th>
+      <th>Wins</th><th>Podiums</th><th>Finals</th>
+      <th>Starters</th>
+      <th>Final rate</th><th>Expected</th>
+      <th>Overrep ×</th><th>Z-score</th><th>Signal</th>
+    </tr></thead>
+    <tbody>${filtered.map((c, idx) => {
+      const z      = c.z_finals;
+      const zStr   = z !== null ? z.toFixed(2) : '—';
+      const sig    = z !== null && Math.abs(z) > 2;
+      const overrep = c.overrep !== null ? c.overrep.toFixed(2) : '—';
+      const [rowBg, sigLabel] =
+        z !== null && z > 4  ? ['#fee2e2', '🚨 Very high'] :
+        z !== null && z > 2  ? ['#fef9c3', '⚠️ Significant'] :
+        z !== null && z < -2 ? ['#f0fdf4', '✅ Under-rep'] :
+                               ['', '—'];
+      const isROU = c.country === 'ROU' || c.country === 'ROM';
+      return `<tr style="background:${isROU ? '#fef3c7' : rowBg}${isROU?';font-weight:600':''}">
+        <td style="color:var(--gray-400);font-size:0.8rem">${idx+1}</td>
+        <td><strong>${c.country}</strong>${isROU ? ' 👀' : ''}</td>
+        <td style="text-align:center;font-weight:700;color:${c.wins>0?'#059669':'var(--gray-400)'}">${c.wins}</td>
+        <td style="text-align:center">${c.podiums}</td>
+        <td style="text-align:center">${c.finals}</td>
+        <td style="text-align:center;color:var(--gray-500)">${c.starts}</td>
+        <td style="text-align:center">${c.final_rate_pct}%</td>
+        <td style="text-align:center;color:var(--gray-500)">${c.exp_rate_pct}%</td>
+        <td style="text-align:center;font-weight:${c.overrep>1.5?'700':'400'};color:${c.overrep>2?'#dc2626':c.overrep>1.5?'#d97706':'inherit'}">${overrep}</td>
+        <td style="text-align:center;font-weight:${sig?'700':'400'};color:${z>4?'#dc2626':z>2?'#d97706':z<-2?'#059669':'var(--gray-500)'}">${zStr}</td>
+        <td style="font-size:0.82rem">${sigLabel}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>
+    <div style="font-size:0.75rem;color:var(--gray-400);margin-top:0.5rem">
+      Z-score: distance from expected in standard deviations (binomial test on finals). |Z| &gt; 2.0 = p &lt; 0.05. |Z| &gt; 3.0 = p &lt; 0.003.
+    </div>`;
+}
+
+function filterCountryTable() {
+  if (_crStatsData) _renderCountryTable(_crStatsData.countries || []);
 }
 </script>
 </body>

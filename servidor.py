@@ -5247,6 +5247,42 @@ def countries_batch_status():
     return jsonify({**_countries_batch, "ok": True})
 
 
+@app.route("/api/countries/debug")
+def countries_debug():
+    """Quick diagnostic: how many competitions are in the DB and what their dates look like."""
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) FROM scraped_competitions").fetchone()[0]
+    with_date = conn.execute(
+        "SELECT COUNT(*) FROM scraped_competitions WHERE competition_date IS NOT NULL"
+    ).fetchone()[0]
+    without_date = conn.execute(
+        "SELECT COUNT(*) FROM scraped_competitions WHERE competition_date IS NULL"
+    ).fetchone()[0]
+    sample = conn.execute(
+        "SELECT slug, competition_date, discipline FROM scraped_competitions LIMIT 5"
+    ).fetchall()
+    already_scraped = conn.execute(
+        "SELECT COUNT(DISTINCT slug) FROM competition_couple_results"
+    ).fetchone()[0]
+    # Test scrape one slug
+    test_slug = conn.execute("SELECT slug FROM scraped_competitions LIMIT 1").fetchone()
+    test_result = []
+    if test_slug:
+        test_result = _scrape_couple_results(test_slug[0])
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "total_competitions": total,
+        "with_date": with_date,
+        "without_date": without_date,
+        "already_scraped_slugs": already_scraped,
+        "sample_slugs": [dict(r) for r in sample],
+        "test_slug": test_slug[0] if test_slug else None,
+        "test_rows_scraped": len(test_result),
+        "test_sample": test_result[:3] if test_result else [],
+    })
+
+
 @app.route("/api/countries/stats")
 def countries_stats():
     """

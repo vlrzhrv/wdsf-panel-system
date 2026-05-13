@@ -281,7 +281,6 @@
   <button class="nav-btn" onclick="showPage('assign')">🎯 Assignment</button>
   <button class="nav-btn" onclick="showPage('nominations')">🌐 WDSF Nominees</button>
   <button class="nav-btn" onclick="showPage('history'); loadCorrelations()">📈 Judge History</button>
-  <button class="nav-btn" onclick="showPage('countries')">🌍 Country Stats</button>
 </nav>
 
 <div id="toast"></div>
@@ -381,14 +380,12 @@
             <th>WCH</th>
             <th>GS</th>
             <th>CCH</th>
-            <th title="Gender">♂♀</th>
-            <th title="AJS course / GKT test completed">AJS/GKT</th>
             <th>Status</th>
-            <th>Actions</th>
+            <th>Edit</th>
           </tr>
         </thead>
         <tbody id="judges-body">
-          <tr><td colspan="15" class="empty-state">Loading judges...</td></tr>
+          <tr><td colspan="12" class="empty-state">Loading judges...</td></tr>
         </tbody>
       </table>
     </div>
@@ -403,10 +400,6 @@
       <button class="btn btn-outline" onclick="openWDSFSyncModal()" id="wdsf-cal-sync-btn"
               style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
         🗓️ Sync WDSF Calendar
-      </button>
-      <button class="btn btn-outline" onclick="syncNominationsFromEvents()" id="ev-sync-nom-btn"
-              style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
-        🌐 Sync Nominated
       </button>
       <button class="btn btn-primary" onclick="openEventModal()">➕ New Event</button>
     </div>
@@ -445,22 +438,6 @@
         <label>Number of judges</label>
         <input type="number" id="panel-size-input" min="3" max="20" value="9"
                style="width:80px;padding:0.5rem;border:1px solid #d1d5db;border-radius:0.5rem;font-size:1rem;">
-      </div>
-      <div class="form-group" style="min-width:200px">
-        <label title="Target gender balance in the panel (leave 0 to ignore)">⚖️ Gender balance</label>
-        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-          <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.35rem">
-            ♂ Men
-            <input type="number" id="gender-men-input" min="0" max="20" value="0"
-                   style="width:52px;padding:0.35rem 0.4rem;border:1px solid #d1d5db;border-radius:0.4rem;font-size:0.9rem;">
-          </label>
-          <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.35rem">
-            ♀ Women
-            <input type="number" id="gender-women-input" min="0" max="20" value="0"
-                   style="width:52px;padding:0.35rem 0.4rem;border:1px solid #d1d5db;border-radius:0.4rem;font-size:0.9rem;">
-          </label>
-        </div>
-        <span style="font-size:0.72rem;color:#9ca3af">Set 0 to ignore. Requires gender set on judges.</span>
       </div>
       <div id="assign-actions" style="display:flex;gap:0.75rem;align-items:center;">
         <button class="btn btn-outline" onclick="loadExistingPanel()" id="view-panel-btn" style="display:none;">
@@ -613,9 +590,6 @@
       <button class="btn btn-primary" onclick="computeCorrelations()" id="btn-compute">
         🔬 Compute / Update Correlations
       </button>
-      <button class="btn btn-success" onclick="openFindNewComps()" id="btn-find-new">
-        🔍 Find New Competitions
-      </button>
       <button class="btn btn-secondary" onclick="rescrapeAll()" id="btn-rescrape-all"
               title="Re-fetch all competitions with the latest parsing code (picks up finals from World Open competitions)">
         🔄 Re-scrape All Competitions
@@ -623,7 +597,7 @@
       <span id="hist-compute-result" style="font-size:0.85rem;color:var(--gray-500)"></span>
     </div>
     <div style="margin-top:0.6rem;font-size:0.8rem;color:var(--gray-500)">
-      Use <strong>Find New Competitions</strong> to auto-discover and batch-scrape new WDSF events. Then Compute Correlations to update Criterion F.
+      Run after scraping new competitions to update Criterion F scores. Use "Re-scrape All" after a server update to refresh final-round data.
     </div>
     <div id="rescrape-all-result" style="margin-top:0.75rem"></div>
   </div>
@@ -739,255 +713,6 @@
       </div>
     </div>
   </div>
-
-  <!-- ══════════════ JUDGE INTEGRITY ANALYSIS ══════════════ -->
-  <div class="card" style="margin-top:1.5rem" id="integrity-card">
-    <div class="card-title">🔍 Judge Integrity Analysis
-      <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-        Detects round-by-round divergences and suspicious voting patterns within a single competition
-      </span>
-    </div>
-
-    <div class="alert alert-info" style="margin-bottom:1rem;font-size:0.85rem">
-      <strong>Method:</strong> For each judge, we compare how their marks change between rounds
-      vs. how the <em>rest of the panel</em> changed. A judge who moves a couple sharply up or down
-      while the panel consensus stays flat — or vice versa — is flagged.
-      A <strong>suspicion index &gt; 0.08</strong> is considered high; &gt; 0.04 medium.
-    </div>
-
-    <!-- Competition selector -->
-    <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
-      <div style="flex:1;min-width:300px">
-        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">Competition slug</label>
-        <input id="integrity-slug" type="text" class="form-input"
-          value="GrandSlam-Blackpool-Adult-Latin-65352"
-          placeholder="e.g. GrandSlam-Blackpool-Adult-Latin-65352"
-          list="integrity-slug-suggestions">
-        <datalist id="integrity-slug-suggestions"></datalist>
-      </div>
-      <div>
-        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.4rem">&nbsp;</label>
-        <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer;padding:0.55rem 0">
-          <input type="checkbox" id="integrity-force"> Force re-scrape
-        </label>
-      </div>
-      <div>
-        <button class="btn btn-primary" onclick="runIntegrityAnalysis()" id="btn-integrity">
-          🔬 Analyze
-        </button>
-      </div>
-    </div>
-
-    <div id="integrity-status" style="font-size:0.85rem;color:var(--gray-500);margin-bottom:0.5rem"></div>
-
-    <!-- Results panel (hidden until analysis runs) -->
-    <div id="integrity-results" style="display:none">
-
-      <!-- Summary row -->
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="integrity-summary-row">
-      </div>
-
-      <!-- Suspicion index table -->
-      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
-        🚨 Suspicion Index per Judge
-        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-          divergences ÷ opportunities · &gt;0.08 = 🔴 high · &gt;0.04 = 🟡 medium · ≤0.04 = 🟢 low
-        </span>
-      </div>
-      <div id="integrity-suspicion-table" class="table-wrap" style="margin-bottom:1.5rem"></div>
-
-      <!-- Divergence events -->
-      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
-        ⚡ Top Divergence Events
-        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-          Rounds where a judge's opinion shifted against the panel consensus
-        </span>
-      </div>
-      <div id="integrity-divergence-table" class="table-wrap" style="margin-bottom:1.5rem"></div>
-
-      <!-- Within-competition correlations -->
-      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
-        🤝 Most Similar Judge Pairs (this competition)
-        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-          Spearman r on round-1 marks — very high r may indicate bloc voting
-        </span>
-      </div>
-      <div id="integrity-corr-table" class="table-wrap"></div>
-    </div>
-  </div>
-
-  <!-- ══════════════ BATCH SCRAPE + AGGREGATE ANALYSIS ══════════════ -->
-  <div class="card" style="margin-top:1.5rem" id="integrity-batch-card">
-    <div class="card-title">⚡ Batch Analysis — All Competitions
-      <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-        Scrapes per-round data from all 300+ competitions and computes aggregate suspicion scores per judge
-      </span>
-    </div>
-
-    <div class="alert alert-info" style="margin-bottom:1rem;font-size:0.85rem">
-      <strong>How it works:</strong> For each competition with ≥2 rounds (qualifying → semifinal → final),
-      we detect when a judge moved a couple against the panel consensus. Aggregated across hundreds of
-      competitions, a consistently high suspicion index is a real signal.
-      This will take <strong>5–15 minutes</strong> to scrape all competitions — run once, results persist.
-    </div>
-
-    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
-      <button class="btn btn-primary" onclick="startBatchScrape()" id="btn-batch-start">
-        🚀 Scrape All &amp; Analyze
-      </button>
-      <button class="btn btn-secondary" onclick="loadAggregateResults()" id="btn-batch-aggregate">
-        📊 Show Aggregate Results
-      </button>
-      <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer">
-        <input type="checkbox" id="batch-force"> Force re-scrape (ignore cached)
-      </label>
-    </div>
-
-    <!-- Progress bar -->
-    <div id="batch-progress-wrap" style="display:none;margin-bottom:1rem">
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem">
-        <span id="batch-status-text">Starting…</span>
-        <span id="batch-pct">0%</span>
-      </div>
-      <div style="height:12px;background:#e5e7eb;border-radius:6px;overflow:hidden">
-        <div id="batch-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:6px;transition:width 0.4s"></div>
-      </div>
-      <div id="batch-substatus" style="font-size:0.75rem;color:var(--gray-500);margin-top:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-    </div>
-
-    <!-- Aggregate results -->
-    <div id="batch-aggregate-results" style="display:none">
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem" id="batch-summary-row"></div>
-
-      <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.6rem;color:var(--gray-700)">
-        🎯 Aggregate Suspicion Index
-        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-          Sorted by suspicion index — judges with consistent divergences across many competitions
-        </span>
-      </div>
-      <div id="batch-judge-table" class="table-wrap"></div>
-    </div>
-  </div>
-
-</div>
-
-<!-- ═══════════════════ COUNTRY STATS ═══════════════════ -->
-<div id="page-countries" class="page">
-  <div class="page-header">
-    <div class="page-title">🌍 Country Results Analysis</div>
-  </div>
-
-  <div class="alert alert-info" style="margin-bottom:1.5rem;font-size:0.85rem">
-    <strong>Method:</strong> For each competition we compare the country distribution in
-    <strong>Round 1</strong> (all couples who started) vs. the <strong>Final</strong>
-    (couples who qualified). The <em>overrepresentation ratio</em> = observed final rate ÷ expected
-    final rate based on entries. A Z-score &gt; 2.0 is statistically significant (p &lt; 0.05).
-    Data sourced from WDSF official results pages.
-  </div>
-
-  <!-- Step 1: Batch scrape -->
-  <div class="card" style="margin-bottom:1.5rem">
-    <div class="card-title">⬇️ Step 1 — Scrape Couple Results</div>
-    <div style="font-size:0.82rem;color:var(--gray-500);margin-bottom:0.8rem">
-      Fetches couple placements and country flags from all WDSF results pages.
-      Run once — takes 5–15 min. Results persist in the database.
-    </div>
-    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:0.8rem">
-      <div>
-        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Since year</label>
-        <select id="cr-since-year" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
-          <option value="2022">2022 (last 3 yrs)</option>
-          <option value="2021">2021 (last 4 yrs)</option>
-          <option value="2020">2020 (last 5 yrs)</option>
-          <option value="2018">2018 (last 7 yrs)</option>
-        </select>
-      </div>
-      <div style="padding-top:1.3rem">
-        <label style="font-size:0.82rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer">
-          <input type="checkbox" id="cr-force"> Force re-scrape
-        </label>
-      </div>
-      <div style="padding-top:1.3rem">
-        <button class="btn btn-primary" onclick="startCountryBatch()" id="btn-cr-start">
-          🚀 Start Scraping
-        </button>
-      </div>
-    </div>
-    <!-- Progress -->
-    <div id="cr-progress-wrap" style="display:none">
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem">
-        <span id="cr-status-text">Starting…</span>
-        <span id="cr-pct">0%</span>
-      </div>
-      <div style="height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden">
-        <div id="cr-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#059669,#10b981);border-radius:6px;transition:width 0.5s"></div>
-      </div>
-      <div id="cr-substatus" style="font-size:0.75rem;color:var(--gray-400);margin-top:0.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-    </div>
-  </div>
-
-  <!-- Step 2: Analyze -->
-  <div class="card" style="margin-bottom:1.5rem">
-    <div class="card-title">📊 Step 2 — Analyze Results</div>
-    <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:0.8rem">
-      <div>
-        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Discipline</label>
-        <select id="cr-discipline" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
-          <option value="">All disciplines</option>
-          <option value="Standard">Standard</option>
-          <option value="Latin">Latin</option>
-        </select>
-      </div>
-      <div>
-        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Age group (keyword)</label>
-        <input id="cr-age-group" type="text" placeholder="Adult, Junior, Youth, Senior…"
-          style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem;width:160px">
-      </div>
-      <div>
-        <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.3rem">Since year</label>
-        <select id="cr-since-year2" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-200);border-radius:6px;font-size:0.9rem">
-          <option value="2022">2022</option>
-          <option value="2021">2021</option>
-          <option value="2020">2020</option>
-          <option value="2018">2018</option>
-        </select>
-      </div>
-      <div style="padding-top:1.3rem">
-        <button class="btn btn-primary" onclick="loadCountryStats()" id="btn-cr-analyze">
-          🔬 Analyze
-        </button>
-      </div>
-    </div>
-    <div id="cr-analyze-status" style="font-size:0.85rem;color:var(--gray-500)"></div>
-  </div>
-
-  <!-- Results -->
-  <div id="cr-results" style="display:none">
-
-    <!-- Summary bar -->
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem" id="cr-summary-row"></div>
-
-    <!-- Highlight box: Romania & any other outlier -->
-    <div id="cr-highlight-box" style="margin-bottom:1.5rem"></div>
-
-    <!-- Full table -->
-    <div class="card">
-      <div class="card-title">🏆 All Countries — Ranked by Wins
-        <span style="font-size:0.75rem;font-weight:400;color:var(--gray-500);margin-left:0.5rem">
-          Countries with ≥2 final appearances shown with full stats · Z &gt; 2.0 flagged 🚨
-        </span>
-      </div>
-      <div style="margin-bottom:0.75rem;display:flex;gap:0.75rem;align-items:center">
-        <input id="cr-filter" type="text" class="form-input" style="max-width:200px"
-          placeholder="Filter country…" oninput="filterCountryTable()">
-        <label style="font-size:0.85rem;display:flex;align-items:center;gap:0.4rem">
-          <input type="checkbox" id="cr-only-significant" onchange="filterCountryTable()">
-          Only statistically significant (|Z| &gt; 2.0)
-        </label>
-      </div>
-      <div id="cr-main-table" class="table-wrap"></div>
-    </div>
-  </div>
 </div>
 
 <!-- ═══════════════════ MODAL EVENTO ═══════════════════ -->
@@ -1068,46 +793,6 @@
   </div>
 </div>
 
-<!-- ── FIND NEW COMPETITIONS MODAL ───────────────────────────────────────── -->
-<div id="new-comps-modal" class="modal-overlay">
-  <div class="modal" style="max-width:720px">
-    <div class="modal-title">🔍 Find New Competitions</div>
-    <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
-      <label style="font-size:0.85rem;font-weight:600">Year:</label>
-      <select id="new-comps-year" style="padding:0.35rem 0.6rem;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem">
-        <option value="2026">2026</option>
-        <option value="2025">2025</option>
-      </select>
-      <button class="btn btn-primary btn-sm" onclick="fetchNewComps()" id="btn-fetch-new-comps" style="font-size:0.82rem">
-        🔄 Fetch from WDSF
-      </button>
-      <span id="new-comps-status" style="font-size:0.82rem;color:var(--gray-500)"></span>
-    </div>
-    <div id="new-comps-loading" style="display:none;text-align:center;padding:1.5rem;color:var(--gray-500)">
-      ⏳ Querying WDSF API (may take ~20 seconds)...
-    </div>
-    <div id="new-comps-content" style="display:none">
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;align-items:center">
-        <button class="btn btn-sm btn-outline" onclick="newCompsSelectAll(true)">Select all</button>
-        <button class="btn btn-sm btn-outline" onclick="newCompsSelectAll(false)">Deselect all</button>
-        <span id="new-comps-count" style="font-size:0.8rem;color:var(--gray-500);margin-left:auto"></span>
-      </div>
-      <div id="new-comps-list" style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px"></div>
-      <div id="new-comps-scrape-log" style="margin-top:0.75rem;max-height:120px;overflow-y:auto;font-size:0.78rem;font-family:monospace;background:#f8fafc;border-radius:6px;padding:0.5rem;display:none"></div>
-    </div>
-    <div id="new-comps-empty" style="display:none;text-align:center;padding:2rem;color:var(--gray-500)">
-      ✅ All competitions for this year are already scraped.
-    </div>
-    <div id="new-comps-error" style="display:none;padding:1rem;color:#dc2626;background:#fef2f2;border-radius:8px;font-size:0.875rem"></div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeNewCompsModal()">Close</button>
-      <button class="btn btn-primary" id="btn-scrape-selected" onclick="scrapeSelectedComps()" style="display:none">
-        📥 Scrape Selected
-      </button>
-    </div>
-  </div>
-</div>
-
 <!-- ── WDSF CALENDAR SYNC MODAL ──────────────────────────────────────── -->
 <div id="wdsf-cal-modal" class="modal-overlay">
   <div class="modal" style="max-width:700px">
@@ -1170,32 +855,6 @@
           <option value="national" selected>National</option>
         </select>
       </div>
-      <div class="form-group">
-        <label>Gender</label>
-        <select id="ej-gender">
-          <option value="">— Not set —</option>
-          <option value="M">♂ Male</option>
-          <option value="F">♀ Female</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label title="Absolute Judging System course">AJS Course</label>
-        <select id="ej-ajs" onchange="_onCompletedChange('ej-ajs','ej-ajs-date')">
-          <option value="">Not completed</option>
-          <option value="1">✅ Completed (no date)</option>
-          <option value="DATE">📅 Enter date...</option>
-        </select>
-        <input type="date" id="ej-ajs-date" style="display:none;margin-top:0.4rem;width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:0.4rem">
-      </div>
-      <div class="form-group">
-        <label title="General Knowledge Test">GKT Test</label>
-        <select id="ej-gkt" onchange="_onCompletedChange('ej-gkt','ej-gkt-date')">
-          <option value="">Not completed</option>
-          <option value="1">✅ Completed (no date)</option>
-          <option value="DATE">📅 Enter date...</option>
-        </select>
-        <input type="date" id="ej-gkt-date" style="display:none;margin-top:0.4rem;width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:0.4rem">
-      </div>
       <div class="form-group full" style="justify-content:flex-start">
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:400">
           <input type="checkbox" id="ej-active" onchange="toggleInactiveReason()">
@@ -1212,19 +871,6 @@
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeEditJudge()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditJudge()">💾 Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── JUDGE HISTORY MODAL ───────────────────────────────────────────────── -->
-<div id="judge-history-modal" class="modal-overlay">
-  <div class="modal" style="max-width:680px">
-    <div class="modal-title">📋 Judging History <span id="jh-name" style="font-size:0.85rem;color:var(--gray-500)"></span></div>
-    <div id="jh-content" style="max-height:60vh;overflow-y:auto">
-      <div class="alt-loading">Loading history...</div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeJudgeHistory()">Close</button>
     </div>
   </div>
 </div>
@@ -1449,14 +1095,6 @@ async function loadJudges() {
         <td style="text-align:center"><strong>${j.judging_world_championships ?? 0}</strong></td>
         <td style="text-align:center">${j.judging_grand_slams ?? 0}</td>
         <td style="text-align:center">${j.judging_continental_championships ?? 0}</td>
-        <td style="text-align:center">
-          ${j.gender ? `<span class="badge" style="background:${j.gender==='M'?'#dbeafe':'#fce7f3'};color:${j.gender==='M'?'#1e40af':'#9d174d'}">${j.gender==='M'?'♂ M':'♀ F'}</span>` : '<span class="text-muted">—</span>'}
-        </td>
-        <td style="text-align:center;font-size:0.75rem">
-          ${j.ajs_completed ? `<span title="AJS completed${j.ajs_completed.length>1?' on '+j.ajs_completed:''}">✅ AJS</span>` : '<span class="text-muted">—</span>'}
-          <br>
-          ${j.gkt_completed ? `<span title="GKT completed${j.gkt_completed.length>1?' on '+j.gkt_completed:''}">✅ GKT</span>` : '<span class="text-muted">—</span>'}
-        </td>
         <td>
           <span class="badge ${j.active ? 'badge-active' : 'badge-inactive'}"
                 title="${j.active ? 'Click to mark inactive' : (j.notes ? 'Reason: ' + j.notes + '\nClick to reactivate' : 'Click to reactivate')}"
@@ -1464,10 +1102,7 @@ async function loadJudges() {
             ${j.active ? 'Active' : 'Inactive'}
           </span>
         </td>
-        <td>
-          <button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})" title="Edit judge">✎</button>
-          <button class="btn btn-sm btn-outline" onclick="openJudgeHistory(${j.id})" title="View judging history" style="margin-left:0.25rem">📋</button>
-        </td>
+        <td><button class="btn btn-sm btn-outline" onclick="openEditJudge(${j.id})">✎</button></td>
       </tr>`;
     }).join('');
   } catch(e) {
@@ -1528,33 +1163,6 @@ async function openEditJudge(jid) {
     document.getElementById('ej-career').value      = j.career_level || 'national';
     document.getElementById('ej-active').checked    = !!j.active;
     document.getElementById('ej-notes').value       = j.notes || '';
-    document.getElementById('ej-gender').value      = j.gender || '';
-    // AJS
-    const ajsVal = j.ajs_completed;
-    if (!ajsVal) {
-      document.getElementById('ej-ajs').value = '';
-      document.getElementById('ej-ajs-date').style.display = 'none';
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(ajsVal)) {
-      document.getElementById('ej-ajs').value = 'DATE';
-      document.getElementById('ej-ajs-date').value = ajsVal;
-      document.getElementById('ej-ajs-date').style.display = '';
-    } else {
-      document.getElementById('ej-ajs').value = '1';
-      document.getElementById('ej-ajs-date').style.display = 'none';
-    }
-    // GKT
-    const gktVal = j.gkt_completed;
-    if (!gktVal) {
-      document.getElementById('ej-gkt').value = '';
-      document.getElementById('ej-gkt-date').style.display = 'none';
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(gktVal)) {
-      document.getElementById('ej-gkt').value = 'DATE';
-      document.getElementById('ej-gkt-date').value = gktVal;
-      document.getElementById('ej-gkt-date').style.display = '';
-    } else {
-      document.getElementById('ej-gkt').value = '1';
-      document.getElementById('ej-gkt-date').style.display = 'none';
-    }
     // Show reason box if inactive
     document.getElementById('ej-reason-group').style.display = j.active ? 'none' : 'block';
     // Show WDSF sync info if notes contain sync info
@@ -1582,35 +1190,17 @@ function closeEditJudge() {
   document.getElementById('edit-judge-modal').classList.remove('open');
 }
 
-function _getCompletedValue(selectId, dateId) {
-  const v = document.getElementById(selectId).value;
-  if (!v) return null;
-  if (v === 'DATE') return document.getElementById(dateId).value || '1';
-  return '1';
-}
-
-function _onCompletedChange(selectId, dateId) {
-  const v = document.getElementById(selectId).value;
-  document.getElementById(dateId).style.display = v === 'DATE' ? '' : 'none';
-}
-
 async function saveEditJudge() {
   const jid     = document.getElementById('ej-id').value;
   const primary = document.getElementById('ej-primary').value;
   const career  = document.getElementById('ej-career').value;
   const active  = document.getElementById('ej-active').checked ? 1 : 0;
   const notes   = document.getElementById('ej-notes').value.trim() || null;
-  const gender  = document.getElementById('ej-gender').value || null;
-  const ajs     = _getCompletedValue('ej-ajs', 'ej-ajs-date');
-  const gkt     = _getCompletedValue('ej-gkt', 'ej-gkt-date');
   try {
     const res = await fetch(API + '/judges/' + jid, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        primary_discipline: primary || null, career_level: career, active, notes,
-        gender, ajs_completed: ajs, gkt_completed: gkt
-      })
+      body: JSON.stringify({ primary_discipline: primary || null, career_level: career, active, notes })
     });
     if (!res.ok) throw new Error('Error saving');
     closeEditJudge();
@@ -1646,70 +1236,6 @@ async function quickToggleActive(jid, currentActive, name) {
       loadJudges();
     } catch(e) { toast('Error: ' + e.message, 'error'); }
   }
-}
-
-// ── Judge History ─────────────────────────────────────────────────────────
-
-async function openJudgeHistory(jid) {
-  document.getElementById('jh-name').textContent = '';
-  document.getElementById('jh-content').innerHTML = '<div class="alt-loading">⏳ Loading...</div>';
-  document.getElementById('judge-history-modal').classList.add('open');
-  try {
-    const data = await fetch(`${API}/judges/${jid}/history`).then(r => r.json());
-    const j = data.judge || {};
-    document.getElementById('jh-name').textContent = `— ${j.last_name || ''}, ${j.first_name || ''}`;
-
-    const official  = data.official  || [];
-    const internal  = data.internal  || [];
-
-    const allRows = [
-      ...official.map(r => ({
-        date: r.comp_date, name: r.comp_name, disc: r.comp_discipline,
-        loc: r.comp_location, role: r.section === 'adjudicator' ? '✅ Adjudicator' : '📋 Nominated',
-        status: r.status || '', source: 'WDSF'
-      })),
-      ...internal.map(r => ({
-        date: r.date, name: r.name, disc: r.discipline,
-        loc: r.location, role: r.role === 'reserve' ? '🔄 Reserve' : '✅ Panel',
-        status: r.status || '', source: 'Internal'
-      })),
-    ].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-
-    if (!allRows.length) {
-      document.getElementById('jh-content').innerHTML = '<div style="padding:1rem;color:var(--gray-500);text-align:center">No judging history found in the last 18 months.</div>';
-      return;
-    }
-
-    let html = `<table style="width:100%;border-collapse:collapse;font-size:0.82rem">
-      <thead><tr style="background:#f8fafc">
-        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Date</th>
-        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Competition</th>
-        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Disc.</th>
-        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Role</th>
-        <th style="padding:0.5rem;text-align:left;border-bottom:1px solid #e2e8f0">Source</th>
-      </tr></thead><tbody>`;
-
-    for (const r of allRows) {
-      const srcBadge = r.source === 'WDSF'
-        ? `<span class="badge" style="background:#dbeafe;color:#1e40af">WDSF</span>`
-        : `<span class="badge" style="background:#d1fae5;color:#065f46">Internal</span>`;
-      html += `<tr style="border-bottom:1px solid #f1f5f9">
-        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.date || '—'}</td>
-        <td style="padding:0.45rem 0.5rem">${r.name || '—'}${r.loc ? `<div style="color:#9ca3af;font-size:0.72rem">${r.loc}</div>` : ''}</td>
-        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.disc || '—'}</td>
-        <td style="padding:0.45rem 0.5rem;white-space:nowrap">${r.role}</td>
-        <td style="padding:0.45rem 0.5rem">${srcBadge}</td>
-      </tr>`;
-    }
-    html += '</tbody></table>';
-    document.getElementById('jh-content').innerHTML = html;
-  } catch(e) {
-    document.getElementById('jh-content').innerHTML = `<div style="padding:1rem;color:#dc2626">Error: ${e.message}</div>`;
-  }
-}
-
-function closeJudgeHistory() {
-  document.getElementById('judge-history-modal').classList.remove('open');
 }
 
 // WDSF sync
@@ -1820,26 +1346,6 @@ async function loadEvents() {
   }
 }
 
-// ── Sync Nominated Officials from Events page ────────────────────────────────
-async function syncNominationsFromEvents() {
-  const btn = document.getElementById('ev-sync-nom-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Syncing…';
-  try {
-    const res  = await fetch(API + '/sync_nominations', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error');
-    const upgraded = data.events_upgraded || data.events || 0;
-    toast(`✅ Sync complete — ${upgraded} event${upgraded !== 1 ? 's' : ''} marked as officially nominated`, 'success');
-    loadEvents();
-  } catch(e) {
-    toast('Sync error: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🌐 Sync Nominated';
-  }
-}
-
 // ── WDSF Calendar Sync ──────────────────────────────────────────────────────
 let _wdsfCalComps = []; // fetched competitions not yet in DB
 
@@ -1884,14 +1390,13 @@ async function openWDSFSyncModal() {
                        : upper.includes('STANDARD') ? 'Standard'
                        : upper.includes('TEN DANCE') || upper.includes('10 DANCE') ? 'Ten Dance'
                        : '';
-      // Guess event type — only Title Events and Grand Slams
+      // Guess event type
       const eventType = upper.includes('WORLD CHAMPIONSHIP') ? 'WORLD CHAMPIONSHIP'
                       : upper.includes('GRAND SLAM') ? 'GRAND SLAM'
                       : upper.includes('EUROPEAN CHAMPIONSHIP') ? 'EUROPEAN CHAMPIONSHIP'
                       : upper.includes('WORLD CUP') ? 'WORLD CUP'
                       : upper.includes('CONTINENTAL') ? 'CONTINENTAL'
-                      : null; // skip Opens and other non-title events
-      if (!eventType) return null; // skip Opens and non-title events
+                      : 'OTHER';
       // Guess age group
       const ageGroup = upper.includes('YOUTH') ? 'Youth'
                      : upper.includes('JUNIOR') ? 'Junior'
@@ -1901,7 +1406,7 @@ async function openWDSFSyncModal() {
                      : upper.includes('SENIOR I') ? 'Senior I'
                      : 'Adult';
       return { wdsfName: raw, name: compName, date: compDate, discipline, eventType, ageGroup, wdsfId: c.id };
-    }).filter(Boolean); // remove non-title events
+    });
 
     // Filter out ones already in DB (match by name)
     _wdsfCalComps = parsed.filter(c => !existingNames.has(c.name.toLowerCase().trim()));
@@ -2405,19 +1910,11 @@ async function runAssignment() {
   const panelSize = parseInt(document.getElementById('panel-size-input').value) || 9;
   const invitedIds = getInvitedIds();
 
-  // Gender balance target
-  const genderMen   = parseInt(document.getElementById('gender-men-input')?.value)   || 0;
-  const genderWomen = parseInt(document.getElementById('gender-women-input')?.value) || 0;
-  const genderTarget = (genderMen + genderWomen > 0)
-    ? { men: genderMen, women: genderWomen }
-    : null;
-
   try {
     const res = await fetch(API + '/events/' + id + '/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ panel_size: panelSize, invited_judge_ids: invitedIds,
-                             gender_target: genderTarget })
+      body: JSON.stringify({ panel_size: panelSize, invited_judge_ids: invitedIds })
     });
     const data = await res.json();
     if (!res.ok) { throw new Error(data.error || 'Assignment error'); }
@@ -2433,7 +1930,7 @@ async function runAssignment() {
 }
 
 function displayResult(data) {
-  const { event, panel, reserves, stats, zones, exclusions, panel_logic, invited_summary, gender_summary } = data;
+  const { event, panel, reserves, stats, zones, exclusions, panel_logic, invited_summary } = data;
 
   // Summary
   document.getElementById('assign-summary').innerHTML = `
@@ -2652,21 +2149,6 @@ function renderPanelLogic(logic) {
     ? `<div class="alert alert-warning" style="margin-top:1rem">🌏 <strong>Asia Rule active:</strong> At least ${logic.asia_minimum} of ${logic.panel_size} judges must come from Asia (event held in ${logic.host_country}, zone: ${logic.host_zone}).</div>`
     : '';
 
-  // Gender balance summary alert
-  const genderNote = gender_summary
-    ? (() => {
-        const ok = gender_summary.met;
-        const col = ok ? '#065f46' : '#92400e';
-        const bg  = ok ? '#d1fae5' : '#fef3c7';
-        return `<div style="margin-top:0.75rem;padding:0.5rem 0.75rem;border-radius:0.4rem;background:${bg};color:${col};font-size:0.82rem">
-          ⚖️ <strong>Gender balance:</strong>
-          Target ♂${gender_summary.target_men} ♀${gender_summary.target_women} →
-          Actual ♂${gender_summary.actual_men} ♀${gender_summary.actual_women}
-          ${ok ? '✅ Met' : '⚠️ Not fully met — not enough judges with gender data'}
-        </div>`;
-      })()
-    : '';
-
   content.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;flex-wrap:wrap">
       <div>
@@ -2677,7 +2159,6 @@ function renderPanelLogic(logic) {
         <div style="font-size:0.8rem;font-weight:700;color:#374151;margin:1rem 0 0.5rem">🏆 Top-10 ${logic.discipline} ranking (★ = mandatory)</div>
         <div>${top10}</div>
         ${asiaNote}
-        ${genderNote}
       </div>
       <div>
         <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:0.5rem">📊 Scoring criteria (max 100 pts)</div>
@@ -2792,17 +2273,12 @@ function judgeCard(j, pos, isReserve=false) {
       <div class="judge-exp">
         WCH: <strong>${wch}</strong> &nbsp;·&nbsp; GS: <strong>${gs}</strong> &nbsp;·&nbsp; CCH: <strong>${cch}</strong>
         &nbsp;·&nbsp; Lic: <span class="badge badge-${j.license_type||'null'}">${j.license_type||'—'}</span>
-        ${j.gender ? `&nbsp;·&nbsp; <span style="font-size:0.72rem;color:#6b7280">${j.gender==='M'?'♂':'♀'}</span>` : ''}
       </div>
       <div style="margin-top:0.45rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
         ${specialtyBadge(j)}
         ${panelStats(j)}
-        ${j.ajs_completed ? `<span style="font-size:0.65rem;background:#d1fae5;color:#065f46;padding:0.15rem 0.4rem;border-radius:999px" title="AJS course completed">✅ AJS</span>` : ''}
-        ${j.gkt_completed ? `<span style="font-size:0.65rem;background:#d1fae5;color:#065f46;padding:0.15rem 0.4rem;border-radius:999px" title="GKT test completed">✅ GKT</span>` : ''}
         ${invitedBadge}
       </div>
-      ${j.same_event_last_year ? `<div style="margin-top:0.4rem;font-size:0.72rem;background:#fef9c3;color:#713f12;padding:0.25rem 0.5rem;border-radius:0.3rem;border:1px solid #fde68a">⚠️ Judged this same event last year</div>` : ''}
-      ${j.same_agegroup_disc_last_year ? `<div style="margin-top:0.3rem;font-size:0.72rem;background:#fff7ed;color:#7c2d12;padding:0.25rem 0.5rem;border-radius:0.3rem;border:1px solid #fed7aa">🔶 Judged same discipline + age group in the past 12 months</div>` : ''}
       ${scoreBreakdownHtml(j)}
       ${swapBtn}
     </div>`;
@@ -3341,145 +2817,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ── Find New Competitions (batch scrape) ──────────────────────────────────
-let _newCompsData = [];
-
-function openFindNewComps() {
-  const modal = document.getElementById('new-comps-modal');
-  modal.classList.add('open');
-  // Reset UI
-  ['new-comps-loading','new-comps-content','new-comps-empty','new-comps-error'].forEach(id =>
-    document.getElementById(id).style.display = 'none');
-  document.getElementById('btn-scrape-selected').style.display = 'none';
-  document.getElementById('new-comps-status').textContent = '';
-  document.getElementById('new-comps-scrape-log').style.display = 'none';
-  _newCompsData = [];
-}
-function closeNewCompsModal() {
-  document.getElementById('new-comps-modal').classList.remove('open');
-}
-
-async function fetchNewComps() {
-  const year = document.getElementById('new-comps-year').value;
-  const btn  = document.getElementById('btn-fetch-new-comps');
-  btn.disabled = true;
-  ['new-comps-content','new-comps-empty','new-comps-error'].forEach(id =>
-    document.getElementById(id).style.display = 'none');
-  document.getElementById('btn-scrape-selected').style.display = 'none';
-  document.getElementById('new-comps-scrape-log').style.display = 'none';
-  document.getElementById('new-comps-loading').style.display = 'block';
-  document.getElementById('new-comps-status').textContent = '';
-
-  try {
-    const res  = await fetch(API + '/list-wdsf-competitions', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ year: parseInt(year) })
-    });
-    const data = await res.json();
-    document.getElementById('new-comps-loading').style.display = 'none';
-
-    if (!data.ok) throw new Error(data.error || JSON.stringify(data));
-
-    // Only show not-yet-scraped
-    _newCompsData = (data.results || []).filter(c => !c.already_scraped);
-    document.getElementById('new-comps-status').textContent =
-      `${data.total} found · ${_newCompsData.length} new · ${(data.results||[]).length - _newCompsData.length} already scraped`;
-
-    if (_newCompsData.length === 0) {
-      document.getElementById('new-comps-empty').style.display = 'block';
-      return;
-    }
-
-    const list = document.getElementById('new-comps-list');
-    list.innerHTML = _newCompsData.map((c, i) => {
-      // Extract date from name "Name - YYYY/MM/DD"
-      const lastDash = c.name.lastIndexOf(' - ');
-      const datePart = lastDash !== -1 ? c.name.slice(lastDash + 3).trim() : '';
-      const dispName = lastDash !== -1 ? c.name.slice(0, lastDash).trim() : c.name;
-      return `
-      <label style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.6rem 1rem;border-bottom:1px solid #f3f4f6;cursor:pointer;${i%2===0?'':'background:#f9fafb'}">
-        <input type="checkbox" class="new-comp-cb" data-idx="${i}" checked style="margin-top:0.2rem;flex-shrink:0;width:16px;height:16px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:0.85rem;color:#1e293b">${dispName}</div>
-          <div style="font-size:0.76rem;color:var(--gray-500);margin-top:0.15rem">
-            📅 ${datePart || '?'} &nbsp;|&nbsp; <code style="font-size:0.72rem">${c.slug}</code>
-          </div>
-        </div>
-      </label>`;
-    }).join('');
-
-    list.querySelectorAll('.new-comp-cb').forEach(cb =>
-      cb.addEventListener('change', updateNewCompsCount));
-    updateNewCompsCount();
-
-    document.getElementById('new-comps-content').style.display = 'block';
-    document.getElementById('btn-scrape-selected').style.display = '';
-  } catch(e) {
-    document.getElementById('new-comps-loading').style.display = 'none';
-    const err = document.getElementById('new-comps-error');
-    err.textContent = '⚠️ ' + e.message;
-    err.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-function updateNewCompsCount() {
-  const checked = document.querySelectorAll('.new-comp-cb:checked').length;
-  document.getElementById('new-comps-count').textContent = `${checked} of ${_newCompsData.length} selected`;
-}
-function newCompsSelectAll(val) {
-  document.querySelectorAll('.new-comp-cb').forEach(cb => cb.checked = val);
-  updateNewCompsCount();
-}
-
-async function scrapeSelectedComps() {
-  const selected = [...document.querySelectorAll('.new-comp-cb:checked')]
-                     .map(cb => _newCompsData[parseInt(cb.dataset.idx)]);
-  if (!selected.length) { toast('No competitions selected', 'error'); return; }
-
-  const btn = document.getElementById('btn-scrape-selected');
-  const log = document.getElementById('new-comps-scrape-log');
-  btn.disabled = true;
-  log.style.display = 'block';
-  log.innerHTML = `<div style="color:#6b7280">Starting batch scrape of ${selected.length} competitions…</div>`;
-
-  let ok = 0, fail = 0;
-  for (const c of selected) {
-    const dispName = c.name.includes(' - ') ? c.name.slice(0, c.name.lastIndexOf(' - ')).trim() : c.name;
-    log.innerHTML += `<div style="color:#6b7280">⏳ ${dispName}…</div>`;
-    log.scrollTop = log.scrollHeight;
-    try {
-      const res  = await fetch(API + '/correlations/scrape', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ slug: c.slug })
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        ok++;
-        log.innerHTML += `<div style="color:#059669">✅ ${dispName} — ${data.n_rounds||'?'} rounds, ${data.n_judges||'?'} judges</div>`;
-      } else {
-        fail++;
-        log.innerHTML += `<div style="color:#dc2626">❌ ${dispName} — ${data.error || 'error'}</div>`;
-      }
-    } catch(e) {
-      fail++;
-      log.innerHTML += `<div style="color:#dc2626">❌ ${dispName} — ${e.message}</div>`;
-    }
-    log.scrollTop = log.scrollHeight;
-  }
-
-  log.innerHTML += `<div style="color:#374151;font-weight:600;margin-top:0.4rem">Done: ${ok} scraped, ${fail} failed.</div>`;
-  btn.disabled = false;
-  btn.textContent = '✅ Done — Scrape More?';
-  if (ok > 0) {
-    toast(`✅ Scraped ${ok} competition${ok>1?'s':''}`, 'success');
-    await loadCorrelations();
-  }
-}
-
 async function rescrapeAll() {
   const btn = document.getElementById('btn-rescrape-all');
   const resultEl = document.getElementById('rescrape-all-result');
@@ -3731,612 +3068,6 @@ async function showPairDetail(judgeA, judgeB, discipline, finalsOnly = true) {
     overlay.querySelector('.modal-body').innerHTML =
       `<div class="alert alert-error">Error: ${e.message}</div>`;
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// JUDGE INTEGRITY ANALYSIS
-// ══════════════════════════════════════════════════════════════
-
-async function runIntegrityAnalysis() {
-  const slug = document.getElementById('integrity-slug').value.trim();
-  if (!slug) { toast('Enter a competition slug first', 'warning'); return; }
-
-  const force = document.getElementById('integrity-force').checked;
-  const btn   = document.getElementById('btn-integrity');
-  const status = document.getElementById('integrity-status');
-  const results = document.getElementById('integrity-results');
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Analyzing…';
-  status.textContent = 'Scraping marks and computing analysis (this may take 10–30 seconds)…';
-  results.style.display = 'none';
-
-  try {
-    const res = await fetch('/api/integrity/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug, force })
-    });
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      status.innerHTML = `<span style="color:var(--danger)">❌ ${data.error || 'Unknown error'}</span>`;
-      return;
-    }
-
-    status.innerHTML = `<span style="color:var(--success)">✅ Analysis complete — ${data.total_marks_rows} mark rows, ${(data.rounds||[]).length} rounds, ${(data.judges||[]).length} judges</span>`;
-    renderIntegrityResults(data);
-    results.style.display = 'block';
-
-  } catch (e) {
-    status.innerHTML = `<span style="color:var(--danger)">❌ Network error: ${e.message}</span>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔬 Analyze';
-  }
-}
-
-function renderIntegrityResults(data) {
-  // ── Summary stats row ──────────────────────────────────────
-  const summaryRow = document.getElementById('integrity-summary-row');
-  const susp_idx   = data.suspicion_index || [];
-  const highCount  = susp_idx.filter(r => r.risk === 'high').length;
-  const medCount   = susp_idx.filter(r => r.risk === 'medium').length;
-  const nRounds    = (data.rounds  || []).length;
-  const nJudges    = (data.judges  || []).length;
-  const nDivEvents = (data.suspicious_events || []).length;
-  summaryRow.innerHTML = `
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
-      <div style="font-size:1.8rem;font-weight:700;color:#0369a1">${nRounds}</div>
-      <div style="font-size:0.78rem;color:#075985;font-weight:600">Rounds</div>
-    </div>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
-      <div style="font-size:1.8rem;font-weight:700;color:#15803d">${nJudges}</div>
-      <div style="font-size:0.78rem;color:#166534;font-weight:600">Judges</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
-      <div style="font-size:1.8rem;font-weight:700;color:#c2410c">${nDivEvents}</div>
-      <div style="font-size:0.78rem;color:#9a3412;font-weight:600">Divergence Events</div>
-    </div>
-    <div style="background:${highCount > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${highCount > 0 ? '#fecaca' : '#bbf7d0'};border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
-      <div style="font-size:1.8rem;font-weight:700;color:${highCount > 0 ? '#dc2626' : '#15803d'}">${highCount}</div>
-      <div style="font-size:0.78rem;color:${highCount > 0 ? '#991b1b' : '#166534'};font-weight:600">🔴 High-Risk Judges</div>
-    </div>
-    <div style="background:#fefce8;border:1px solid #fef08a;border-radius:10px;padding:1rem 1.4rem;min-width:140px;text-align:center">
-      <div style="font-size:1.8rem;font-weight:700;color:#a16207">${medCount}</div>
-      <div style="font-size:0.78rem;color:#854d0e;font-weight:600">🟡 Medium-Risk</div>
-    </div>`;
-
-  // ── Suspicion index table ──────────────────────────────────
-  const susp   = data.suspicion_index || [];
-  const suspEl = document.getElementById('integrity-suspicion-table');
-  if (!susp.length) {
-    suspEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">No divergences detected — not enough round data to analyze.</div>';
-  } else {
-    suspEl.innerHTML = `<table>
-      <thead><tr>
-        <th>Judge</th><th>Divergences</th><th>Opportunities</th>
-        <th>Suspicion Index</th><th>Avg r (R1)</th><th>Risk</th>
-      </tr></thead>
-      <tbody>${[...susp].sort((a,b) => b.index - a.index).map(r => {
-        const pct  = (r.index * 100).toFixed(1);
-        const bar  = Math.min(100, r.index * 500);
-        const [bg, label, emoji] =
-          r.risk === 'high'   ? ['#fee2e2','HIGH','🔴'] :
-          r.risk === 'medium' ? ['#fef9c3','MEDIUM','🟡'] :
-                                ['#f0fdf4','LOW','🟢'];
-        const barCol = r.risk === 'high' ? '#dc2626' : r.risk === 'medium' ? '#d97706' : '#059669';
-        const displayName = r.name && r.name !== r.letter ? `${r.name} (${r.letter})` : (r.name || r.letter);
-        return `<tr style="background:${bg}">
-          <td style="font-weight:600">${displayName}</td>
-          <td style="text-align:center">${r.divergences}</td>
-          <td style="text-align:center">${r.opportunities}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <div style="width:80px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
-                <div style="width:${bar}%;height:100%;background:${barCol};border-radius:4px"></div>
-              </div>
-              <span style="font-weight:700">${pct}%</span>
-            </div>
-          </td>
-          <td style="text-align:center;color:var(--gray-500)">${(r.avg_r1_corr||0).toFixed(3)}</td>
-          <td><span style="font-weight:600">${emoji} ${label}</span></td>
-        </tr>`;
-      }).join('')}
-      </tbody></table>`;
-  }
-
-  // ── Divergence events table ────────────────────────────────
-  // server returns suspicious_events as the list
-  const events = data.suspicious_events || [];
-  const divEl  = document.getElementById('integrity-divergence-table');
-  if (!events.length) {
-    divEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">No divergence events recorded.</div>';
-  } else {
-    // Sort by largest divergence gap, show up to 30
-    const sorted = [...events].sort((a,b) => b.divergence - a.divergence).slice(0, 30);
-    divEl.innerHTML = `<table>
-      <thead><tr>
-        <th>Judge</th><th>Couple</th><th>Rounds</th>
-        <th>Judge Δ</th><th>Panel Δ</th><th>Divergence</th><th>Direction</th>
-      </tr></thead>
-      <tbody>${sorted.map(e => {
-        const jname = e.judge_name || e.judge_letter || '—';
-        const gap   = e.divergence ?? Math.abs((e.judge_delta||0) - (e.panel_delta||0));
-        // Judge moved opposite to panel
-        const dir   = (e.panel_delta > 0) ? '⬇️ judge dropped (panel liked more)' : '⬆️ judge boosted (panel liked less)';
-        const jdCol = (e.judge_delta||0) >= 0 ? '#059669' : '#dc2626';
-        return `<tr>
-          <td style="font-weight:600">${jname}</td>
-          <td style="font-family:monospace;font-size:0.85rem">#${e.couple}</td>
-          <td style="font-size:0.82rem;color:var(--gray-500)">R${e.round_from}→R${e.round_to}</td>
-          <td style="font-weight:600;color:${jdCol}">${(e.judge_delta||0)>=0?'+':''}${(e.judge_delta||0).toFixed(3)}</td>
-          <td style="color:var(--gray-500)">${(e.panel_delta||0)>=0?'+':''}${(e.panel_delta||0).toFixed(3)}</td>
-          <td style="font-weight:700;color:#dc2626">+${gap.toFixed(3)}</td>
-          <td style="font-size:0.82rem">${dir}</td>
-        </tr>`;
-      }).join('')}
-      </tbody></table>`;
-  }
-
-  // ── Within-competition correlations ───────────────────────
-  // server returns: [{j1, n1, j2, n2, r}, ...]
-  const pairs  = data.corr_pairs || [];
-  const corrEl = document.getElementById('integrity-corr-table');
-  if (!pairs.length) {
-    corrEl.innerHTML = '<div style="padding:1rem;color:var(--gray-500);font-size:0.85rem">Not enough data for correlation analysis (need at least 5 couples in round 1).</div>';
-  } else {
-    const top = [...pairs].sort((a,b) => b.r - a.r).slice(0, 20);
-    corrEl.innerHTML = `<table>
-      <thead><tr>
-        <th>Judge A</th><th>Judge B</th><th>Spearman r</th><th>Risk</th>
-      </tr></thead>
-      <tbody>${top.map(p => {
-        const r   = p.r ?? 0;
-        const bar = Math.max(0, Math.min(100, r * 100));
-        const [col, risk] =
-          r > 0.85 ? ['#dc2626', '🔴 Very high similarity — possible bloc'] :
-          r > 0.70 ? ['#d97706', '🟡 Similar'] :
-                     ['#059669', '🟢 Independent'];
-        const nameA = p.n1 && p.n1 !== p.j1 ? p.n1 : p.j1;
-        const nameB = p.n2 && p.n2 !== p.j2 ? p.n2 : p.j2;
-        return `<tr>
-          <td>${nameA}</td>
-          <td>${nameB}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <div style="width:70px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
-                <div style="width:${bar}%;height:100%;background:${col};border-radius:4px"></div>
-              </div>
-              <span style="font-weight:700;color:${col}">${r>=0?'+':''}${r.toFixed(3)}</span>
-            </div>
-          </td>
-          <td style="font-size:0.82rem">${risk}</td>
-        </tr>`;
-      }).join('')}
-      </tbody></table>`;
-  }
-}
-
-// Populate the integrity slug datalist from scraped competitions
-function _populateIntegritySlugs() {
-  const dl = document.getElementById('integrity-slug-suggestions');
-  if (!dl) return;
-  const comps = _corrData.scraped_competitions || [];
-  dl.innerHTML = comps.map(c => `<option value="${c.slug}">`).join('');
-}
-
-// Hook into existing loadCorrelations so slugs stay fresh
-const _origLoadCorr = loadCorrelations;
-loadCorrelations = async function() {
-  await _origLoadCorr();
-  _populateIntegritySlugs();
-};
-
-// ══════════════════════════════════════════════════════════════
-// BATCH SCRAPE + AGGREGATE ANALYSIS
-// ══════════════════════════════════════════════════════════════
-
-let _batchPollTimer = null;
-
-async function startBatchScrape() {
-  const force = document.getElementById('batch-force').checked;
-  const btn   = document.getElementById('btn-batch-start');
-  btn.disabled = true;
-  btn.textContent = '⏳ Starting…';
-
-  try {
-    const res = await fetch('/api/integrity/batch/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ force })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast(data.error || 'Could not start batch', 'error');
-      btn.disabled = false;
-      btn.textContent = '🚀 Scrape All & Analyze';
-      return;
-    }
-    document.getElementById('batch-progress-wrap').style.display = 'block';
-    _pollBatchStatus();
-  } catch(e) {
-    toast('Network error: ' + e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = '🚀 Scrape All & Analyze';
-  }
-}
-
-function _pollBatchStatus() {
-  clearTimeout(_batchPollTimer);
-  _batchPollTimer = setTimeout(async () => {
-    try {
-      const res  = await fetch('/api/integrity/batch/status');
-      const data = await res.json();
-      _updateBatchProgress(data);
-      if (data.status === 'running') {
-        _pollBatchStatus();   // keep polling
-      } else {
-        const btn = document.getElementById('btn-batch-start');
-        btn.disabled = false;
-        btn.textContent = '🚀 Scrape All & Analyze';
-        if (data.status === 'done') {
-          toast(`✅ Batch complete — ${data.saved} competitions scraped, ${data.skipped} skipped`, 'success');
-          loadAggregateResults();
-        }
-      }
-    } catch(e) {
-      _pollBatchStatus();   // retry on network hiccup
-    }
-  }, 2000);
-}
-
-function _updateBatchProgress(data) {
-  const total = data.total || 1;
-  const pct   = Math.round((data.processed / total) * 100);
-  document.getElementById('batch-pct').textContent        = `${pct}%`;
-  document.getElementById('batch-progress-bar').style.width = `${pct}%`;
-  const statusMap = { running: '⏳ Scraping…', done: '✅ Done', error: '❌ Error', idle: '—' };
-  document.getElementById('batch-status-text').textContent =
-    `${statusMap[data.status] || data.status}  ${data.processed}/${total}  (saved: ${data.saved||0}, skipped: ${data.skipped||0})`;
-  if (data.current) {
-    document.getElementById('batch-substatus').textContent = `Current: ${data.current}`;
-  }
-}
-
-async function loadAggregateResults() {
-  const btn = document.getElementById('btn-batch-aggregate');
-  btn.disabled = true;
-  btn.textContent = '⏳ Loading…';
-  try {
-    const res  = await fetch('/api/integrity/aggregate');
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      toast(data.message || 'Error loading aggregate', 'warning');
-      return;
-    }
-    renderAggregateResults(data);
-    document.getElementById('batch-aggregate-results').style.display = 'block';
-  } catch(e) {
-    toast('Network error: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '📊 Show Aggregate Results';
-  }
-}
-
-function renderAggregateResults(data) {
-  const judges = data.judge_scores || [];
-  const highCount = judges.filter(j => j.risk === 'high').length;
-  const medCount  = judges.filter(j => j.risk === 'medium').length;
-
-  // Summary
-  document.getElementById('batch-summary-row').innerHTML = `
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#0369a1">${data.multi_round_comps}</div>
-      <div style="font-size:0.75rem;color:#075985;font-weight:600">Multi-Round Comps</div>
-    </div>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#15803d">${judges.length}</div>
-      <div style="font-size:0.75rem;color:#166534;font-weight:600">Judges Analyzed</div>
-    </div>
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#dc2626">${highCount}</div>
-      <div style="font-size:0.75rem;color:#991b1b;font-weight:600">🔴 High Risk</div>
-    </div>
-    <div style="background:#fefce8;border:1px solid #fef08a;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#a16207">${medCount}</div>
-      <div style="font-size:0.75rem;color:#854d0e;font-weight:600">🟡 Medium Risk</div>
-    </div>`;
-
-  if (!judges.length) {
-    document.getElementById('batch-judge-table').innerHTML =
-      '<div style="padding:1.5rem;color:var(--gray-500)">No data yet — run Scrape All first, then try again once complete.</div>';
-    return;
-  }
-
-  // Show judges with ≥ 2 opportunities (filter out one-comp noise)
-  const meaningful = judges.filter(j => j.opportunities >= 5);
-  const rest       = judges.filter(j => j.opportunities < 5);
-
-  document.getElementById('batch-judge-table').innerHTML = `
-    <table>
-      <thead><tr>
-        <th>Judge</th>
-        <th>Divergences</th><th>Opportunities</th>
-        <th>Suspicion Index</th><th>Competitions</th><th>Risk</th>
-      </tr></thead>
-      <tbody>
-      ${[...meaningful, ...rest].map(j => {
-        const pct    = (j.index * 100).toFixed(2);
-        const bar    = Math.min(100, j.index * 500);
-        const [bg, emoji, label] =
-          j.risk === 'high'   ? ['#fee2e2','🔴','HIGH'] :
-          j.risk === 'medium' ? ['#fef9c3','🟡','MED'] :
-                                ['','🟢','low'];
-        const barCol = j.risk === 'high' ? '#dc2626' : j.risk === 'medium' ? '#d97706' : '#059669';
-        const dim    = j.opportunities < 5 ? 'opacity:0.5' : '';
-        return `<tr style="background:${bg};${dim}">
-          <td style="font-weight:600">${j.name !== j.letter ? j.name : j.name} <span style="color:var(--gray-400);font-size:0.75rem">(${j.letter})</span></td>
-          <td style="text-align:center">${j.divergences}</td>
-          <td style="text-align:center">${j.opportunities}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:0.5rem">
-              <div style="width:80px;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
-                <div style="width:${bar}%;height:100%;background:${barCol};border-radius:4px"></div>
-              </div>
-              <span style="font-weight:700">${pct}%</span>
-            </div>
-          </td>
-          <td style="text-align:center">${j.n_competitions}</td>
-          <td>${emoji} ${label}</td>
-        </tr>`;
-      }).join('')}
-      </tbody>
-    </table>
-    <div style="font-size:0.75rem;color:var(--gray-400);margin-top:0.5rem">
-      ⚠️ Judges with &lt;5 opportunities (dimmed) have insufficient data for reliable conclusions.
-    </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════
-// COUNTRY STATS PAGE
-// ══════════════════════════════════════════════════════════════
-
-let _crPollTimer  = null;
-let _crStatsData  = null;
-
-async function startCountryBatch() {
-  const force     = document.getElementById('cr-force').checked;
-  const sinceYear = document.getElementById('cr-since-year').value;
-  const btn       = document.getElementById('btn-cr-start');
-  btn.disabled    = true;
-  btn.textContent = '⏳ Starting…';
-
-  try {
-    const res = await fetch('/api/countries/batch/start', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ force, since_year: parseInt(sinceYear) })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast(data.error || 'Could not start', 'error');
-      btn.disabled = false;
-      btn.textContent = '🚀 Start Scraping';
-      return;
-    }
-    document.getElementById('cr-progress-wrap').style.display = 'block';
-    _pollCrStatus();
-  } catch(e) {
-    toast('Network error: ' + e.message, 'error');
-    btn.disabled = false;
-    btn.textContent = '🚀 Start Scraping';
-  }
-}
-
-function _pollCrStatus() {
-  clearTimeout(_crPollTimer);
-  _crPollTimer = setTimeout(async () => {
-    try {
-      const res  = await fetch('/api/countries/batch/status');
-      const data = await res.json();
-      _updateCrProgress(data);
-      if (data.status === 'running') {
-        _pollCrStatus();
-      } else {
-        const btn = document.getElementById('btn-cr-start');
-        btn.disabled = false;
-        btn.textContent = '🚀 Start Scraping';
-        if (data.status === 'done') {
-          toast(`✅ Scraping done — ${data.saved} competitions saved`, 'success');
-          loadCountryStats();
-        }
-      }
-    } catch(e) {
-      _pollCrStatus();
-    }
-  }, 2500);
-}
-
-function _updateCrProgress(data) {
-  const total = data.total || 1;
-  const pct   = Math.round((data.processed / total) * 100);
-  document.getElementById('cr-pct').textContent          = `${pct}%`;
-  document.getElementById('cr-progress-bar').style.width = `${pct}%`;
-  const s = data.status === 'running' ? '⏳' : data.status === 'done' ? '✅' : '❌';
-  document.getElementById('cr-status-text').textContent  =
-    `${s} ${data.processed}/${total}  saved: ${data.saved||0}`;
-  if (data.current)
-    document.getElementById('cr-substatus').textContent  = data.current;
-}
-
-async function loadCountryStats() {
-  const disc     = document.getElementById('cr-discipline').value;
-  const ageGroup = document.getElementById('cr-age-group').value.trim();
-  const since    = document.getElementById('cr-since-year2').value;
-  const btn      = document.getElementById('btn-cr-analyze');
-  const status   = document.getElementById('cr-analyze-status');
-
-  btn.disabled    = true;
-  btn.textContent = '⏳ Analyzing…';
-  status.textContent = 'Loading data…';
-
-  try {
-    const params = new URLSearchParams({ since_year: since });
-    if (disc)     params.set('discipline', disc);
-    if (ageGroup) params.set('age_group',  ageGroup);
-
-    const res  = await fetch('/api/countries/stats?' + params.toString());
-    const data = await res.json();
-
-    if (!res.ok || !data.ok) {
-      status.textContent = data.message || 'Error loading stats';
-      return;
-    }
-
-    _crStatsData = data;
-
-    if (!data.countries || !data.countries.length) {
-      status.textContent = data.message || 'No data yet — run Step 1 first.';
-      return;
-    }
-
-    status.textContent = '';
-    renderCountryResults(data);
-    document.getElementById('cr-results').style.display = 'block';
-
-  } catch(e) {
-    status.textContent = 'Network error: ' + e.message;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔬 Analyze';
-  }
-}
-
-function renderCountryResults(data) {
-  const countries = data.countries || [];
-
-  // ── Summary row ─────────────────────────────────────────────
-  const totalCountries = countries.length;
-  const sigCount = countries.filter(c => c.z_finals !== null && Math.abs(c.z_finals) > 2).length;
-  const topWinner = countries[0];
-
-  document.getElementById('cr-summary-row').innerHTML = `
-    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#0369a1">${data.total_comps}</div>
-      <div style="font-size:0.75rem;color:#075985;font-weight:600">Competitions</div>
-    </div>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#15803d">${totalCountries}</div>
-      <div style="font-size:0.75rem;color:#166534;font-weight:600">Countries</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#c2410c">${data.total_starts}</div>
-      <div style="font-size:0.75rem;color:#9a3412;font-weight:600">Total Starters</div>
-    </div>
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:0.9rem 1.2rem;min-width:130px;text-align:center">
-      <div style="font-size:1.6rem;font-weight:700;color:#dc2626">${sigCount}</div>
-      <div style="font-size:0.75rem;color:#991b1b;font-weight:600">Statistically Anomalous</div>
-    </div>`;
-
-  // ── Highlight box: Romania + other top outliers ──────────────
-  const highlights = countries.filter(c =>
-    (c.country === 'ROU' || c.country === 'ROM') ||
-    (c.z_finals !== null && c.z_finals > 3 && c.finals >= 5)
-  ).slice(0, 5);
-
-  const hlBox = document.getElementById('cr-highlight-box');
-  if (highlights.length) {
-    hlBox.innerHTML = `
-      <div style="background:#fef9c3;border:2px solid #fde047;border-radius:12px;padding:1.2rem 1.5rem">
-        <div style="font-size:0.9rem;font-weight:700;color:#a16207;margin-bottom:0.8rem">
-          🔍 Statistical Outliers — Countries significantly over-represented in finals
-        </div>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap">
-          ${highlights.map(c => _countryHighlightCard(c)).join('')}
-        </div>
-      </div>`;
-  } else {
-    hlBox.innerHTML = '';
-  }
-
-  // ── Main table ────────────────────────────────────────────────
-  _renderCountryTable(countries);
-}
-
-function _countryHighlightCard(c) {
-  const overrep = c.overrep !== null ? `${c.overrep}×` : '—';
-  const z       = c.z_finals !== null ? c.z_finals.toFixed(1) : '—';
-  const risk    = c.z_finals > 4 ? '#dc2626' : c.z_finals > 2 ? '#d97706' : '#059669';
-  return `<div style="background:white;border:1px solid #fde047;border-radius:8px;padding:0.8rem 1rem;min-width:180px">
-    <div style="font-size:1.1rem;font-weight:800;color:#1f2937">${c.country}</div>
-    <div style="font-size:0.8rem;color:#374151;margin-top:0.2rem">
-      🏆 ${c.wins} wins &nbsp;·&nbsp; 🥇🥈🥉 ${c.podiums} podiums<br>
-      🎯 ${c.finals} finals (exp. ${c.exp_finals})<br>
-      📊 Overrep: <strong>${overrep}</strong> &nbsp;
-      Z: <strong style="color:${risk}">${z}</strong>
-    </div>
-  </div>`;
-}
-
-function _renderCountryTable(countries) {
-  const filter = (document.getElementById('cr-filter')?.value || '').toLowerCase();
-  const onlySig = document.getElementById('cr-only-significant')?.checked;
-
-  let filtered = countries.filter(c => {
-    if (filter && !c.country.toLowerCase().includes(filter)) return false;
-    if (onlySig && (c.z_finals === null || Math.abs(c.z_finals) <= 2)) return false;
-    return true;
-  });
-
-  const el = document.getElementById('cr-main-table');
-  if (!filtered.length) {
-    el.innerHTML = '<div style="padding:1.5rem;color:var(--gray-500)">No countries match the filter.</div>';
-    return;
-  }
-
-  el.innerHTML = `<table>
-    <thead><tr>
-      <th>#</th><th>Country</th>
-      <th>Wins</th><th>Podiums</th><th>Finals</th>
-      <th>Starters</th>
-      <th>Final rate</th><th>Expected</th>
-      <th>Overrep ×</th><th>Z-score</th><th>Signal</th>
-    </tr></thead>
-    <tbody>${filtered.map((c, idx) => {
-      const z      = c.z_finals;
-      const zStr   = z !== null ? z.toFixed(2) : '—';
-      const sig    = z !== null && Math.abs(z) > 2;
-      const overrep = c.overrep !== null ? c.overrep.toFixed(2) : '—';
-      const [rowBg, sigLabel] =
-        z !== null && z > 4  ? ['#fee2e2', '🚨 Very high'] :
-        z !== null && z > 2  ? ['#fef9c3', '⚠️ Significant'] :
-        z !== null && z < -2 ? ['#f0fdf4', '✅ Under-rep'] :
-                               ['', '—'];
-      const isROU = c.country === 'ROU' || c.country === 'ROM';
-      return `<tr style="background:${isROU ? '#fef3c7' : rowBg}${isROU?';font-weight:600':''}">
-        <td style="color:var(--gray-400);font-size:0.8rem">${idx+1}</td>
-        <td><strong>${c.country}</strong>${isROU ? ' 👀' : ''}</td>
-        <td style="text-align:center;font-weight:700;color:${c.wins>0?'#059669':'var(--gray-400)'}">${c.wins}</td>
-        <td style="text-align:center">${c.podiums}</td>
-        <td style="text-align:center">${c.finals}</td>
-        <td style="text-align:center;color:var(--gray-500)">${c.starts}</td>
-        <td style="text-align:center">${c.final_rate_pct}%</td>
-        <td style="text-align:center;color:var(--gray-500)">${c.exp_rate_pct}%</td>
-        <td style="text-align:center;font-weight:${c.overrep>1.5?'700':'400'};color:${c.overrep>2?'#dc2626':c.overrep>1.5?'#d97706':'inherit'}">${overrep}</td>
-        <td style="text-align:center;font-weight:${sig?'700':'400'};color:${z>4?'#dc2626':z>2?'#d97706':z<-2?'#059669':'var(--gray-500)'}">${zStr}</td>
-        <td style="font-size:0.82rem">${sigLabel}</td>
-      </tr>`;
-    }).join('')}
-    </tbody></table>
-    <div style="font-size:0.75rem;color:var(--gray-400);margin-top:0.5rem">
-      Z-score: distance from expected in standard deviations (binomial test on finals). |Z| &gt; 2.0 = p &lt; 0.05. |Z| &gt; 3.0 = p &lt; 0.003.
-    </div>`;
-}
-
-function filterCountryTable() {
-  if (_crStatsData) _renderCountryTable(_crStatsData.countries || []);
 }
 </script>
 </body>

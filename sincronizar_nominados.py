@@ -163,12 +163,6 @@ def find_judge(conn, full_name, country_code):
 def upsert_nomination(conn, comp_id, comp_name, comp_date, discipline,
                       location, comp_url, name, country, judge_id,
                       role, status, section, position):
-    # If judge moves from 'nominated' → 'adjudicator', remove the old nominated row
-    if section == 'adjudicator':
-        conn.execute("""
-            DELETE FROM official_nominations
-            WHERE wdsf_comp_id=? AND judge_name=? AND section='nominated'
-        """, (comp_id, name))
     conn.execute("""
         INSERT INTO official_nominations
             (wdsf_comp_id, comp_name, comp_date, comp_discipline, comp_location, comp_url,
@@ -325,53 +319,18 @@ def sync():
 
         conn.commit()
 
-        # ── Intentar emparejar con un evento en nuestra BD ───────────────────
-        # Estrategia 1: coincidencia por fecha + disciplina + palabras clave del nombre
-        wdsf_name_upper = ev["name"].upper()
-        candidates = conn.execute(
-            "SELECT id, name, status FROM events WHERE date=? AND discipline=?",
+        # Si tenemos una competición en nuestra BD con el mismo nombre/fecha:
+        our_ev = conn.execute(
+            "SELECT id, status FROM events WHERE date=? AND discipline=?",
             (ev["date"], ev["discipline"])
-        ).fetchall()
-
-        our_ev = None
-        if candidates:
-            if len(candidates) == 1:
-                our_ev = candidates[0]
-            else:
-                # Si hay varios, intentar emparejar por palabras clave del nombre
-                for c in candidates:
-                    c_upper = (c["name"] or "").upper()
-                    # Compartir al menos 2 palabras significativas (>3 letras)
-                    wdsf_words = {w for w in wdsf_name_upper.split() if len(w) > 3}
-                    local_words = {w for w in c_upper.split() if len(w) > 3}
-                    if len(wdsf_words & local_words) >= 2:
-                        our_ev = c
-                        break
-                if not our_ev:
-                    our_ev = candidates[0]  # fallback al primero
-
-        # Estrategia 2: si no hay match por fecha, buscar por palabras clave del nombre
-        if not our_ev:
-            all_evs = conn.execute(
-                "SELECT id, name, status, date FROM events WHERE discipline=?",
-                (ev["discipline"],)
-            ).fetchall()
-            wdsf_words = {w for w in wdsf_name_upper.split() if len(w) > 3}
-            for c in all_evs:
-                c_upper = (c["name"] or "").upper()
-                local_words = {w for w in c_upper.split() if len(w) > 3}
-                if len(wdsf_words & local_words) >= 3:
-                    our_ev = c
-                    break
-
-        if our_ev and our_ev["status"] not in ("officially_nominated",):
+        ).fetchone()
+        if our_ev and our_ev["status"] not in ("officially_nominated","sent_for_review"):
             conn.execute(
                 "UPDATE events SET status='officially_nominated' WHERE id=?",
                 (our_ev["id"],)
             )
             conn.commit()
-            print(f"    → Evento interno #{our_ev['id']} '{our_ev['name']}' "
-                  f"({our_ev['status']} → officially_nominated)")
+            print(f"    → Evento interno #{our_ev['id']} marcado como officially_nominated")
 
     print(f"\n  RESUMEN: {total_adj} adjudicadores, {total_nom} nominados, "
           f"{total_matched} emparejados con la BD")

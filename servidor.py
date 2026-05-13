@@ -5035,13 +5035,37 @@ def _scrape_couple_results(slug):
     """
     Fetch couple placements + countries from /Competitions/Results/{slug}.
 
-    The WDSF Results page has one big table (like _scrape_marks_page) where
-    each data row contains [couple_num, round_num, ...judge cols..., total].
-    The round_num is an integer cell in the row — the highest round per slug
-    is considered the Final.
+    WDSF Results pages come in several layouts:
+      A) Same table structure as Marks (judge-letter cols): round_num in cell
+      B) Round sections separated by h2/h3 headings ("Final", "Semifinal"…)
+         with a per-round placement table beneath each heading
+      C) Simple flat table with flag images but no per-round info
 
-    Returns list of {round_num, place, couple_num, country_a, country_b}.
+    Returns list of {round_num, place, couple_num, couple_name,
+                     country_a, country_b, score}.
+    round_num mapping: 99=Final, 50=Semi, 25=Quarter, 1-10=early rounds
     """
+    _ROUND_MAP = {
+        "final": 99, "finale": 99,
+        "semi": 50, "semifinal": 50, "semi-final": 50, "halbfinale": 50,
+        "quarter": 25, "quarterfinal": 25, "quarter-final": 25,
+        "eighth": 12, "1/8": 12,
+        "round 1": 1, "round 2": 2, "round 3": 3, "round 4": 4,
+        "runde 1": 1, "runde 2": 2,
+    }
+
+    def _parse_round(text):
+        """Convert a round label to round_num int, or None."""
+        t = text.strip().lower()
+        for k, v in _ROUND_MAP.items():
+            if k in t:
+                return v
+        # bare integer
+        try:
+            return int(t)
+        except (ValueError, TypeError):
+            return None
+
     url = f"https://www.worlddancesport.org/Competitions/Results/{slug}"
     try:
         r = requests.get(url, timeout=25,
@@ -5051,23 +5075,19 @@ def _scrape_couple_results(slug):
         return []
 
     from bs4 import BeautifulSoup as _BS
-    soup   = _BS(r.text, "html.parser")
-    tables = soup.find_all("table")
-    if not tables:
-        return []
+    import re as _re
+    soup = _BS(r.text, "html.parser")
 
     results = []
 
-    for table in tables:
+    # ── Strategy A: Marks-style table (same structure as _scrape_marks_page) ──
+    # Look for a table with ≥9 uppercase single-letter header columns
+    for table in soup.find_all("table"):
         rows = table.find_all("tr")
         if len(rows) < 3:
             continue
-
-        # ── Strategy A: look for the judge-letters header row ─────────────
-        # (same pattern as _scrape_marks_page — columns A,B,C,D... ≥9 entries)
         judge_header_idx  = None
-        judge_col_entries = []   # [(col_idx, letter), ...]
-
+        judge_col_entries = []
         for ri, row in enumerate(rows[:8]):
             cells = [th.get_text(strip=True) for th in row.find_all(["th","td"])]
             entries = [(i, c) for i, c in enumerate(cells)
@@ -5077,43 +5097,72 @@ def _scrape_couple_results(slug):
                 judge_header_idx  = ri
                 judge_col_entries = entries
                 break
+        if judge_header_idx is None:
+            continue
 
-        if judge_header_idx is not None:
-            # Known column positions (mirroring _scrape_marks_page)
-            first_judge_col = judge_col_entries[0][0]
-            couple_col_idx  = max(0, first_judge_col - 2)
-            round_col_idx   = max(0, first_judge_col - 1)
+        first_judge_col = judge_col_entries[0][0]
+        couple_col_idx  = max(0, first_judge_col - 2)
+        round_col_idx   = max(0, first_judge_col - 1)
+        current_couple  = None
 
-            current_couple = None
-            for row in rows[judge_header_idx + 1:]:
-                cells = row.find_all(["td","th"])
-                if len(cells) < first_judge_col:
-                    continue
-                # Couple number (carry-forward when empty / rowspan)
-                couple_txt = cells[couple_col_idx].get_text(strip=True) if couple_col_idx < len(cells) else ""
-                if couple_txt and couple_txt.isdigit():
-                    current_couple = couple_txt
-                if not current_couple:
-                    continue
-                # Round number
-                round_txt = cells[round_col_idx].get_text(strip=True) if round_col_idx < len(cells) else ""
+        for row in rows[judge_header_idx + 1:]:
+            cells = row.find_all(["td","th"])
+            if len(cells) < first_judge_col:
+                continue
+            couple_txt = cells[couple_col_idx].get_text(strip=True) if couple_col_idx < len(cells) else ""
+            if couple_txt and couple_txt.isdigit():
+                current_couple = couple_txt
+            if not current_couple:
+                continue
+            round_txt = cells[round_col_idx].get_text(strip=True) if round_col_idx < len(cells) else ""
+            try:
+                round_num = int(round_txt)
+            except Exception:
+                continue
+            countries = _extract_countries_from_row(row)
+            score = None
+            for cell in reversed(cells):
                 try:
-                    round_num = int(round_txt)
-                except Exception:
-                    continue
-                # Countries from flag images / CSS flags anywhere in this row
-                countries = _extract_countries_from_row(row)
-                results.append({
-                    "round_num":  round_num,
-                    "place":      None,   # will derive from highest round later
-                    "couple_num": current_couple,
-                    "country_a":  countries[0] if countries else "",
-                    "country_b":  countries[1] if len(countries) > 1 else (countries[0] if countries else ""),
-                })
-            continue   # done with this table
+                    score = float(cell.get_text(strip=True)); break
+                except (ValueError, TypeError):
+                    pass
+            results.append({
+                "round_num": round_num, "place": None,
+                "couple_num": current_couple, "couple_name": "",
+                "country_a": countries[0] if countries else "",
+                "country_b": countries[1] if len(countries) > 1 else (countries[0] if countries else ""),
+                "score": score,
+            })
 
-        # ── Strategy B: simple placement table (no judge columns) ─────────
-        # Scan every row for flag images; collect place + couple_num
+        # Post-process: remap highest round to 99 (Final)
+        if results:
+            max_rnd = max(r["round_num"] for r in results)
+            if max_rnd != 99:
+                for r in results:
+                    if r["round_num"] == max_rnd:
+                        r["round_num"] = 99
+        return results   # Strategy A succeeded
+
+    # ── Strategy B: h2/h3-sectioned page (round heading → placement table) ─
+    # Walk the DOM: every h2/h3 sets the current round; the next table is parsed
+    current_round = 99   # default to Final if no heading found
+    found_heading  = False
+
+    for element in soup.find_all(["h1","h2","h3","h4","table"]):
+        if element.name in ("h1","h2","h3","h4"):
+            rn = _parse_round(element.get_text())
+            if rn is not None:
+                current_round = rn
+                found_heading  = True
+            continue
+
+        # It's a table — parse under current_round
+        table = element
+        rows = table.find_all("tr")
+        if len(rows) < 2:
+            continue
+
+        placed = 0
         for row in rows[1:]:
             countries = _extract_countries_from_row(row)
             if not countries:
@@ -5121,26 +5170,121 @@ def _scrape_couple_results(slug):
             cells = row.find_all(["td","th"])
             texts = [c.get_text(strip=True) for c in cells]
             nums  = [t for t in texts if t.isdigit()]
-            place     = int(nums[0]) if nums else None
-            couple_num = nums[1] if len(nums) > 1 else ""
+            # place: only assign if plausible (≤100)
+            place = None
+            couple_num = ""
+            if len(nums) >= 2:
+                try:
+                    place = int(nums[0]); couple_num = nums[1]
+                except ValueError:
+                    pass
+            elif len(nums) == 1:
+                try:
+                    couple_num = nums[0]
+                except ValueError:
+                    pass
+            score = None
+            for t in reversed(texts):
+                try:
+                    score = float(t); break
+                except (ValueError, TypeError):
+                    pass
             results.append({
-                "round_num":  99,   # no round info → assume Final
-                "place":      place,
-                "couple_num": couple_num,
-                "country_a":  countries[0],
-                "country_b":  countries[1] if len(countries) > 1 else countries[0],
+                "round_num": current_round, "place": place,
+                "couple_num": couple_num, "couple_name": "",
+                "country_a": countries[0],
+                "country_b": countries[1] if len(countries) > 1 else countries[0],
+                "score": score,
+            })
+            placed += 1
+
+    if results:
+        return results
+
+    # ── Strategy C: flat table scan — any rows with flags (last resort) ───
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        for row in rows[1:]:
+            countries = _extract_countries_from_row(row)
+            if not countries:
+                continue
+            cells = row.find_all(["td","th"])
+            texts = [c.get_text(strip=True) for c in cells]
+            nums  = [t for t in texts if t.isdigit()]
+            place      = int(nums[0]) if nums else None
+            couple_num = nums[1] if len(nums) > 1 else (nums[0] if nums else "")
+            score = None
+            for t in reversed(texts):
+                try:
+                    score = float(t); break
+                except (ValueError, TypeError):
+                    pass
+            results.append({
+                "round_num": 99, "place": place,
+                "couple_num": couple_num, "couple_name": "",
+                "country_a": countries[0],
+                "country_b": countries[1] if len(countries) > 1 else countries[0],
+                "score": score,
             })
 
-    # ── Post-process: mark highest round_num per slug as the "Final" (99) ──
-    # (The Results page uses actual round numbers 1,2,3... not 99)
-    if results:
-        max_rnd = max(r["round_num"] for r in results)
-        if max_rnd != 99:
-            for r in results:
-                if r["round_num"] == max_rnd:
-                    r["round_num"] = 99
-
     return results
+
+
+@app.route("/api/countries/test", methods=["GET"])
+def countries_test_single():
+    """Debug: scrape ONE competition and return raw parsed entries (no DB write)."""
+    slug = request.args.get("slug", "GrandSlam-Blackpool-Adult-Latin-65352")
+    url  = f"https://www.worlddancesport.org/Competitions/Results/{slug}"
+    try:
+        import re as _re
+        from bs4 import BeautifulSoup as _BS
+        r = requests.get(url, timeout=25,
+                         headers={"User-Agent": "Mozilla/5.0 WDSF-PanelSystem/1.0"})
+        status_code = r.status_code
+        content_len = len(r.text)
+        soup   = _BS(r.text, "html.parser")
+        tables = soup.find_all("table")
+
+        # Inspect first table for structure
+        table_info = []
+        for ti, tbl in enumerate(tables[:5]):
+            rows = tbl.find_all("tr")
+            first_rows = []
+            for rr in rows[:6]:
+                cells = [c.get_text(strip=True) for c in rr.find_all(["td","th"])]
+                imgs  = [img.get("title") or img.get("alt") or ""
+                         for img in rr.find_all("img") if img.get("title") or img.get("alt")]
+                spans = []
+                for s in rr.find_all(["span","i"], class_=True):
+                    cls = " ".join(s.get("class",[]))
+                    m = _re.search(r'(?:fi-|flag-icon-|flag-)([a-z]{2,3})\b', cls)
+                    if m:
+                        spans.append(m.group(1).upper())
+                first_rows.append({"cells": cells[:12], "imgs": imgs, "spans": spans})
+            table_info.append({"table_index": ti, "n_rows": len(rows), "first_rows": first_rows})
+
+        # Run actual scraper
+        entries = _scrape_couple_results(slug)
+        from collections import Counter
+        rounds = dict(Counter(e["round_num"] for e in entries))
+        countries = Counter(e["country_a"] for e in entries if e["country_a"])
+
+        return jsonify({
+            "ok":          True,
+            "slug":        slug,
+            "url":         url,
+            "http_status": status_code,
+            "content_len": content_len,
+            "n_tables":    len(tables),
+            "table_info":  table_info,
+            "entries_found": len(entries),
+            "rounds":      rounds,
+            "top_countries": countries.most_common(15),
+            "first_10_entries": entries[:10],
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "trace": traceback.format_exc()}), 500
 
 
 _countries_batch = {
@@ -5206,10 +5350,10 @@ def countries_batch_start():
                                     (slug, round_num, place, couple_num, couple_name,
                                      country_a, country_b, score, scraped_at)
                                 VALUES (?,?,?,?,?,?,?,?,?)
-                            """, (slug, row["round_num"], row["place"],
-                                  row["couple_num"], row["couple_name"],
-                                  row["country_a"], row["country_b"],
-                                  row["score"], now))
+                            """, (slug, row["round_num"], row.get("place"),
+                                  row.get("couple_num"), row.get("couple_name"),
+                                  row.get("country_a", ""), row.get("country_b", ""),
+                                  row.get("score"), now))
                         conn.commit()
                         _countries_batch["saved"] += 1
 

@@ -1637,6 +1637,131 @@ def enrich_disciplines_status():
     """Poll background enrichment progress."""
     return jsonify(_enrich_status)
 
+@app.route("/api/judges/auto-gender", methods=["POST"])
+def auto_gender_judges():
+    """
+    Auto-detect gender for judges with no gender set, using first name heuristics.
+    Returns counts of how many were filled vs skipped.
+    """
+    # Inline name→gender database for common WDSF nationalities
+    # Format: lowercase first name → 'M' or 'F'
+    MALE_NAMES = set("""
+    aaron adam adrian agustin alan alberto alejandro aleksander alexander alexei alexey
+    ali alvar alvaro andras andrei andrej andrew andrey andriy andy angel antonio artur
+    attila axel ayoub baptiste ben benjamin bjorn brad brandon brendan brian carlos
+    cedric christian christoph christopher claude clement cristian daniel dario darko
+    darryl david demetris denis dennis dima dimitri dmitri dominic dominik dusan edgar
+    edward emanuele emilio enrique eric erik ethan fabian filippo florian francois frank
+    franz fred frederic gabriel georgi goran gregor greg hans henri henrik hugo igor
+    ilya ivan jaan jacob jacques james jan jean jeong jesus joachim joel johannes john
+    jonathan jorge jose juan julian juliusz julio jurgen kai karl kevin kofi kristian
+    lars laszlo leo leonardo liam livio loic luca lucas lukas luke marco marcos marek
+    mario mark markus marton martin matteo matthew max maximilian michael michel miguel
+    mikael mikkel mikhail milan mirko nacho nathaniel niclas nico nicolas nikita nikolaj
+    nikolay norbert nuno oliver oscar pablo patrik paul paulo pawel pedro peter petr
+    philippe pierre rafael raul richard robert roberto rodrigo roman ruben ryan salva
+    sam samuel santiago sascha sebastien sergio simone stanislav stefan stephan stephen
+    steve steven sven sylvain takeshi thomas tibor tim timo tobias tom tommy vaclav
+    valentin vasile victor viktor vincenzo vitali vladislav vojtech volodymyr vyacheslav
+    william yannick yves zoltan zsolt
+    aleksei alexis baptiste boris brett damien davide dmitry edoardo eugen fedor felix
+    georg gerhard giulio gottfried gregor gunter harold ingo jakub jaroslav jiri jochen
+    joern jonas jose jose juan jurij lars laurentiu liviu loan luca martin matej mateus
+    mateusz mauricio maxim maximiliano miroslav mischa niels nils olaf piotr radoslav
+    rainer reinhard rene renato richard rihard roberto rodrigo roman romain rumen sergei
+    serge sergiy serhiy slavko slaven tadeusz tomas tomaz tomislav toni tore uwe valdas
+    valeriu vasil veselin vladimirs volker waldemar walter wlodzimierz yaroslav yuri
+    """.split())
+
+    FEMALE_NAMES = set("""
+    adriana agnieszka aida alena alessia alexandra alice alina alisa alissa aliya alona
+    alzbeta amalia amelia ana anastasia andrea andriivna angela anita anja anna anne
+    annelise annemarie annette annika antonia anya ariana arina arlette asja aurora
+    ayse beatrice blanca brenda brigitte camilla carmen carolina caroline catarina
+    catherine cecilia charlotte christel claudia constanza cristina dagmar dana daniela
+    daria darina diana dinorah dominika dorota dorottya edita ekaterina elena eleonora
+    elisa elisabetta elizaveta ella emily emma erica erika erina esther eugenia eva
+    evgenia federica fernanda flavia florentina gabriela galina gemma gina gisela giulia
+    grace grazia greta hannelore hanna helena helene ilona inga ingrid irina ivana jana
+    janina janka jessica joanna jolanta josephine julia juliana julianna julieta justyna
+    karolina kata katalin katerina katharina katherine katja katrin katrina katarzyna
+    kinga klara klaudia kristina kristyna laura leila lena leslie lidia liliya liliia
+    liliana linda lisa livia lucia ludmila luisa luise luiza lyudmila magda magdalena
+    maja manuela marcela margit maria marianna mariana marika marina marta martina
+    marzena maxine melanija melanie michaela milena milica mirella miriam monika myriam
+    nadia nadya nadine natalija natalia nataliya natasha nicola nicoleta nina nora olena
+    oksana olha olga olivia ornela pamela patricia paulina petra polina radoslava
+    raluca ramona rebeka renata renate roksana romina rosalba rosaria rossella sabina
+    sabrina sandra sara sarah silke silvana silvia simona slavka sonia sonja sophia
+    sophie stanislava stefania stella stephanie svetlana sylvia tatiana tina ulrike
+    vanda vanessa vera verena veronika victoria viktoria virginia viviane vladimira
+    wendy xenia yana yuliya yuliia zita zsuzsanna
+    agata aleksandra alicja amalia amira anastazja andzelika anna barbara beata
+    bogumila cecylia czeslawa danuta edyta ela elzbieta eugenia ewa grazyna halina
+    helena irena iwona jadwiga janina jolanta jozefa julia kazimiera kinga krystyna
+    krzysztofina lidia lucja ludmila magdalena malgorzata maria mariola marta miroslawa
+    monika natalia olga paulina ryszarda sabina slawomira stanisława teresa urszula
+    wanda wiesława wioletta władysława zofia
+    """.split())
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, first_name, last_name FROM judges WHERE gender IS NULL OR gender = ''"
+    ).fetchall()
+
+    filled = 0
+    skipped = 0
+    uncertain = 0
+
+    for jid, first_name, last_name in rows:
+        fn = (first_name or "").strip().lower().split()[0] if first_name else ""
+        if not fn:
+            skipped += 1
+            continue
+
+        if fn in MALE_NAMES:
+            conn.execute("UPDATE judges SET gender='M' WHERE id=?", (jid,))
+            filled += 1
+        elif fn in FEMALE_NAMES:
+            conn.execute("UPDATE judges SET gender='F' WHERE id=?", (jid,))
+            filled += 1
+        else:
+            # Try removing common suffixes / accents
+            import unicodedata
+            fn_norm = ''.join(c for c in unicodedata.normalize('NFD', fn)
+                              if unicodedata.category(c) != 'Mn')
+            if fn_norm in MALE_NAMES:
+                conn.execute("UPDATE judges SET gender='M' WHERE id=?", (jid,))
+                filled += 1
+            elif fn_norm in FEMALE_NAMES:
+                conn.execute("UPDATE judges SET gender='F' WHERE id=?", (jid,))
+                filled += 1
+            else:
+                uncertain += 1
+
+    conn.commit()
+
+    # Stats after update
+    total = conn.execute("SELECT COUNT(*) FROM judges").fetchone()[0]
+    now_m = conn.execute("SELECT COUNT(*) FROM judges WHERE gender='M'").fetchone()[0]
+    now_f = conn.execute("SELECT COUNT(*) FROM judges WHERE gender='F'").fetchone()[0]
+    still_missing = conn.execute(
+        "SELECT COUNT(*) FROM judges WHERE gender IS NULL OR gender = ''"
+    ).fetchone()[0]
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "filled": filled,
+        "uncertain": uncertain,
+        "skipped": skipped,
+        "total_judges": total,
+        "now_male": now_m,
+        "now_female": now_f,
+        "still_missing": still_missing,
+    })
+
+
 @app.route("/api/events", methods=["GET","POST"])
 def events():
     conn = get_db()

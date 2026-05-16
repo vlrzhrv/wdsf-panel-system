@@ -2508,7 +2508,7 @@ function displayResult(data) {
   document.getElementById('panel-grid').innerHTML = panel.map((j, i) => judgeCard(j, i+1)).join('');
 
   // Panel logic section
-  renderPanelLogic(panel_logic);
+  renderPanelLogic(panel_logic, gender_summary);
 
   // Barra de confirmación
   updateConfirmBar(event.name, event.status || 'assigned');
@@ -2642,7 +2642,7 @@ function panelStats(j) {
   </span>`;
 }
 
-function renderPanelLogic(logic) {
+function renderPanelLogic(logic, gender_summary) {
   if (!logic) return;
   const card = document.getElementById('panel-logic-card');
   const content = document.getElementById('panel-logic-content');
